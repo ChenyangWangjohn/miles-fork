@@ -12,6 +12,10 @@ On-policy distillation (OPD) trains a student model on its own rollouts while us
 | `--opd-log-prob-top-k` | Number of top-k tokens retained for the Rethinking OPD token reward. `0` uses sampled-token OPD; `16` matches the paper recipe default. |
 | `--opd-top-k-strategy` | Top-k token set strategy: `only-student`, `only-teacher`, `intersection`, `union`, or `xor`. |
 | `--opd-reward-weight-mode` | Weighting scheme for top-k rewards: `student_p`, `teacher_p`, or `none`. |
+| `--opd-top-k-scoring-block-size` | Response positions grouped into one arbitrary-ID scoring request for `only-student` and `only-teacher` (default: `32`). `0` restores the legacy response-wide candidate union. |
+| `--opd-scoring-timeout` | Total deadline in seconds for one external scoring request, including in-flight queueing, retries, and transport (default: `600`). |
+| `--opd-scoring-max-inflight` | Maximum concurrent external scoring requests per process (default: `8`). `0` disables the bound. |
+| `--opd-scoring-retries` | Number of retries within the same total scoring deadline (default: `1`). `0` fails after the first attempt. |
 | `--opd-teacher-load` | Path to teacher Megatron checkpoint. **Required** when `--opd-type=megatron`, **must not be set** when `--opd-type=sglang`. |
 | `--opd-teacher-ckpt-step` | Optional checkpoint step for teacher model. |
 
@@ -43,6 +47,19 @@ The token set is controlled by `--opd-top-k-strategy`:
 
 `--opd-reward-weight-mode` controls whether each selected token is weighted by student probability, teacher probability, or uniformly. For compatibility, `--opd-log-prob-top-k=0` keeps the original sampled-token OPD path.
 
+For `only-student` and `only-teacher`, Miles keeps each model's native
+per-position candidate rows. The opposite model is scored in bounded
+response-position blocks instead of receiving one union of candidate IDs from
+the entire response. A block of `B` positions contains at most `B*K`
+candidate IDs, and its result is immediately compacted back to `B*K`
+position-local values. This preserves the existing top-k reward exactly while
+preventing one long response from materializing the full response-by-global-union
+Cartesian product. Smaller blocks reduce response size but issue more
+prefix-scoring requests; SGLang's prefix cache can reuse the shared prefixes.
+This bounds the candidate-logprob response, not the total request body: each
+block still sends the growing input prefix, so smaller blocks trade candidate
+response size for more repeated input-ID transfer and request scheduling.
+
 ## Two Teacher Modes
 
 ### SGLang Mode (`--opd-type sglang`)
@@ -65,6 +82,7 @@ The teacher runs on an external SGLang server. Teacher log-probs are obtained du
 --opd-kl-coef 1.0
 --opd-log-prob-top-k 16
 --opd-top-k-strategy only-student
+--opd-top-k-scoring-block-size 32
 --opd-reward-weight-mode student_p
 --custom-rm-path miles.rollout.on_policy_distillation.reward_func
 --custom-reward-post-process-path miles.rollout.on_policy_distillation.post_process_rewards
