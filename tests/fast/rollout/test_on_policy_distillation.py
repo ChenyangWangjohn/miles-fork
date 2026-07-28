@@ -14,7 +14,7 @@ from miles.rollout.on_policy_distillation import (
     _teacher_sampled_log_probs,
     reward_func,
 )
-from miles.utils.types import Sample
+from miles.utils.types import RewardSpec, Sample
 
 register_cpu_ci(est_time=60, suite="stage-a-cpu")
 
@@ -571,3 +571,89 @@ def test_zero_block_size_preserves_legacy_response_wide_union(monkeypatch):
     assert len(calls) == 1
     assert calls[0][1]["input_ids"] == sample.tokens
     assert calls[0][1]["token_ids_logprob"] == [1, 2, 3, 4, 5, 6]
+
+
+# ---------------------------------------------------------------------------
+# Observed task reward (--opd-log-task-reward)
+# ---------------------------------------------------------------------------
+
+
+def test_observed_task_reward_uses_builtin_rm_without_mutating_training_args(monkeypatch):
+    training_args = Namespace(
+        opd_log_task_reward=True,
+        custom_rm_path="miles.rollout.on_policy_distillation.reward_func",
+        rm_type="deepscaler",
+    )
+    sample = Sample(
+        response="answer",
+        label="42",
+        metadata={"dataset": "math", "rm_type": "remote_rm"},
+        reward_spec=RewardSpec(rm_type="remote_rm", custom_rm_path="pkg.remote_reward"),
+    )
+    call = {}
+
+    async def fake_async_rm(args, received_sample):
+        call.update(args=args, sample=received_sample)
+        return 1
+
+    monkeypatch.setattr("miles.rollout.rm_hub.async_rm", fake_async_rm)
+
+    asyncio.run(opd._record_observed_task_reward(training_args, sample))
+
+    assert call["args"] is not training_args
+    assert call["args"].custom_rm_path is None
+    assert call["args"].rm_type == "deepscaler"
+    assert call["sample"] is not sample
+    assert call["sample"].metadata == {"dataset": "math"}
+    assert call["sample"].reward_spec is None
+    assert training_args.custom_rm_path == "miles.rollout.on_policy_distillation.reward_func"
+    assert sample.reward_spec == RewardSpec(rm_type="remote_rm", custom_rm_path="pkg.remote_reward")
+    assert sample.metadata == {
+        "dataset": "math",
+        "rm_type": "remote_rm",
+        opd.OPD_TASK_REWARD_METADATA_KEY: 1.0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("bad_value", "match"),
+    [
+        (None, "must be scalar"),
+        (float("nan"), "must be finite"),
+    ],
+)
+def test_observed_task_reward_rejects_non_scalar_and_non_finite_scores(monkeypatch, bad_value, match):
+    args = Namespace(opd_log_task_reward=True)
+
+    async def fake_async_rm(*_args, **_kwargs):
+        return bad_value
+
+    monkeypatch.setattr("miles.rollout.rm_hub.async_rm", fake_async_rm)
+    with pytest.raises(ValueError, match=match):
+        asyncio.run(opd._record_observed_task_reward(args, Sample(response="x", label="1")))
+
+
+def test_observed_task_reward_is_logged_raw_but_optimization_reward_stays_zero():
+    sample = Sample(tokens=[10, 11, 12], response_length=2)
+    sample.reward = {"meta_info": {"input_token_logprobs": [None, [-0.2, 11], [-0.3, 12]]}}
+    sample.metadata[opd.OPD_TASK_REWARD_METADATA_KEY] = 1.0
+
+    raw_rewards, rewards = opd.post_process_rewards(
+        Namespace(opd_log_prob_top_k=0, opd_log_task_reward=True, reward_key=""),
+        [sample],
+    )
+
+    assert raw_rewards == [1.0]
+    assert rewards == [0.0]
+    assert sample.teacher_log_probs.tolist() == pytest.approx([-0.2, -0.3])
+
+
+def test_observed_task_reward_missing_from_a_sample_fails_loud():
+    sample = Sample(tokens=[10, 11, 12], response_length=2)
+    sample.reward = {"meta_info": {"input_token_logprobs": [None, [-0.2, 11], [-0.3, 12]]}}
+
+    with pytest.raises(ValueError, match="has no observed task reward"):
+        opd.post_process_rewards(
+            Namespace(opd_log_prob_top_k=0, opd_log_task_reward=True, reward_key=""),
+            [sample],
+        )

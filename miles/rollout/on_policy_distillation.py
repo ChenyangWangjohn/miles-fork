@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import math
 import time
 import weakref
@@ -17,6 +18,10 @@ LogprobMaps = list[dict[int, float]]
 
 TOP_K_STRATEGIES = {"only-student", "only-teacher", "intersection", "union", "xor"}
 REWARD_WEIGHT_MODES = {"student_p", "teacher_p", "none"}
+
+# Metadata key consumed by train-data conversion: a value stored here becomes
+# the sample's logged raw_reward instead of the OPD teacher payload.
+OPD_TASK_REWARD_METADATA_KEY = "raw_reward"
 
 _SCORING_RETRY_BACKOFF_S = 2.0
 
@@ -589,7 +594,43 @@ def _compute_topk_reverse_kl(
     return torch.tensor(reverse_kls, dtype=torch.float32)
 
 
+async def _record_observed_task_reward(args: Namespace, sample: Sample) -> None:
+    """Score task correctness for logging without touching OPD advantages."""
+    if not getattr(args, "opd_log_task_reward", False):
+        return
+
+    task_rm_args = copy.copy(args)
+    task_rm_args.custom_rm_path = None
+
+    # The observation contract is the configured built-in --rm-type. Per-sample
+    # reward specs and dataset metadata may select another RM for ordinary
+    # training, including remote_rm; do not let either override redirect this
+    # call to OPD's teacher URL.
+    task_rm_sample = copy.copy(sample)
+    task_rm_sample.reward_spec = None
+    task_rm_metadata = dict(sample.metadata) if isinstance(sample.metadata, dict) else {}
+    task_rm_metadata.pop("rm_type", None)
+    task_rm_sample.metadata = task_rm_metadata
+
+    # Import lazily because rm_hub loads this module through the custom-RM path.
+    from miles.rollout.rm_hub import async_rm
+
+    task_reward = await async_rm(task_rm_args, task_rm_sample)
+    try:
+        task_reward = float(task_reward)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"OPD observed task reward must be scalar, got {task_reward!r}.") from exc
+    if not math.isfinite(task_reward):
+        raise ValueError(f"OPD observed task reward must be finite, got {task_reward}.")
+
+    metadata = dict(sample.metadata or {})
+    metadata[OPD_TASK_REWARD_METADATA_KEY] = task_reward
+    sample.metadata = metadata
+
+
 async def reward_func(args: Namespace, sample: Sample, **kwargs: Any) -> dict[str, Any]:
+    await _record_observed_task_reward(args, sample)
+
     top_k = _get_opd_top_k(args)
     if top_k == 0:
         return await _scoring_post(
@@ -672,17 +713,30 @@ def post_process_rewards(args: Namespace, samples: list[Sample], **kwargs: Any) 
     ``--opd-log-prob-top-k>0`` follows the practical recipe from
     "Rethinking On-Policy Distillation" by forming a top-k token set per
     response position and storing a precomputed weighted reverse-KL estimate.
+
+    With ``--opd-log-task-reward``, ``raw_reward`` is the observed task score
+    from the built-in ``--rm-type`` verifier; the optimization reward stays
+    zero either way, since the learning signal comes from the OPD KL penalty.
     """
-    raw_rewards = [sample.get_reward_value(args) for sample in samples]
+    teacher_rewards = [sample.get_reward_value(args) for sample in samples]
+
+    if getattr(args, "opd_log_task_reward", False):
+        raw_rewards = []
+        for sample in samples:
+            if OPD_TASK_REWARD_METADATA_KEY not in (sample.metadata or {}):
+                raise ValueError("OPD task-reward logging is enabled, but a sample has no observed task reward.")
+            raw_rewards.append(float(sample.metadata[OPD_TASK_REWARD_METADATA_KEY]))
+    else:
+        raw_rewards = [0.0] * len(samples)
+    scalar_rewards = [0.0] * len(samples)
 
     if _get_opd_top_k(args) > 0:
-        for sample, reward in zip(samples, raw_rewards, strict=True):
+        for sample, reward in zip(samples, teacher_rewards, strict=True):
             sample.opd_reverse_kl = _compute_topk_reverse_kl(args, sample, reward)
-        scalar_rewards = [0.0] * len(samples)
-        return scalar_rewards, scalar_rewards
+        return raw_rewards, scalar_rewards
 
     teacher_log_probs = [
-        _teacher_sampled_log_probs(reward, sample) for reward, sample in zip(raw_rewards, samples, strict=True)
+        _teacher_sampled_log_probs(reward, sample) for reward, sample in zip(teacher_rewards, samples, strict=True)
     ]
 
     for sample, t_log_probs in zip(samples, teacher_log_probs, strict=True):
@@ -691,7 +745,4 @@ def post_process_rewards(args: Namespace, samples: list[Sample], **kwargs: Any) 
     # Return scalar rewards for GRPO/PPO advantage estimator.
     # For pure on-policy distillation, we use 0.0 as the task reward.
     # The learning signal comes entirely from the OPD KL penalty.
-    # If you have task rewards, you can add them here.
-    scalar_rewards = [0.0] * len(samples)
-
-    return scalar_rewards, scalar_rewards
+    return raw_rewards, scalar_rewards

@@ -11,6 +11,7 @@ from miles.backends.sglang_utils.arguments import validate_args as validate_sgla
 from miles.utils.arguments import (
     _maybe_apply_dumper_overrides,
     _resolve_ft_components,
+    _validate_opd_task_reward_args,
     get_miles_extra_args_provider,
     miles_validate_args,
 )
@@ -502,3 +503,52 @@ def test_sglang_parallel_size_aliases_keep_last_value():
     args = parser.parse_args(["--sglang-data-parallel-size", "2", "--sglang-dp-size", "3"])
 
     assert args.sglang_dp_size == 3
+
+
+def test_opd_task_reward_logging_argument_is_parsed():
+    parser = argparse.ArgumentParser()
+    get_miles_extra_args_provider()(parser)
+
+    args = parser.parse_args(["--opd-log-task-reward"] + REQUIRED_ARGS)
+
+    assert args.opd_log_task_reward is True
+
+
+def _opd_task_reward_args(**overrides):
+    values = {
+        "opd_log_task_reward": True,
+        "use_opd": True,
+        "opd_type": "sglang",
+        "rm_type": "deepscaler",
+        "custom_rm_path": "miles.rollout.on_policy_distillation.reward_func",
+        "custom_reward_post_process_path": "miles.rollout.on_policy_distillation.post_process_rewards",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+@pytest.mark.parametrize(
+    ("args", "error"),
+    [
+        (_opd_task_reward_args(use_opd=False), r"requires --use-opd"),
+        (_opd_task_reward_args(opd_type="megatron"), r"supported only with --opd-type=sglang"),
+        (_opd_task_reward_args(custom_rm_path=None), r"requires --custom-rm-path"),
+        (
+            _opd_task_reward_args(custom_reward_post_process_path=None),
+            r"requires --custom-reward-post-process-path",
+        ),
+        (_opd_task_reward_args(rm_type=None), r"requires a built-in --rm-type"),
+        (_opd_task_reward_args(rm_type="remote_rm"), r"does not support remote_rm"),
+        (
+            _opd_task_reward_args(rm_type="boxed_remote_rm"),
+            r"does not support remote_rm",
+        ),
+    ],
+)
+def test_opd_task_reward_logging_rejects_incomplete_configuration(args, error):
+    with pytest.raises(ValueError, match=error):
+        _validate_opd_task_reward_args(args)
+
+
+def test_opd_task_reward_logging_accepts_builtin_verifier():
+    _validate_opd_task_reward_args(_opd_task_reward_args())

@@ -1358,6 +1358,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="On-policy distillation KL penalty coefficient. Default is 1.0.",
             )
             parser.add_argument(
+                "--opd-log-task-reward",
+                action="store_true",
+                default=False,
+                help=(
+                    "In SGLang OPD, evaluate each training response with the configured built-in --rm-type and "
+                    "expose the result as rollout/raw_reward. The optimization reward stays zero: this is "
+                    "logging only. Requires the canonical OPD reward and reward-post-process hooks."
+                ),
+            )
+            parser.add_argument(
                 "--opd-log-prob-top-k",
                 type=int,
                 default=0,
@@ -2460,6 +2470,34 @@ def _resolve_ft_components(args: argparse.Namespace) -> list[str]:
     return list(args.ft_components)
 
 
+def _validate_opd_task_reward_args(args) -> None:
+    if not getattr(args, "opd_log_task_reward", False):
+        return
+    if not getattr(args, "use_opd", False):
+        raise ValueError("--opd-log-task-reward requires --use-opd.")
+    if getattr(args, "opd_type", None) != "sglang":
+        raise ValueError("--opd-log-task-reward is currently supported only with --opd-type=sglang.")
+    if getattr(args, "custom_rm_path", None) != "miles.rollout.on_policy_distillation.reward_func":
+        raise ValueError(
+            "--opd-log-task-reward requires --custom-rm-path miles.rollout.on_policy_distillation.reward_func."
+        )
+    if (
+        getattr(args, "custom_reward_post_process_path", None)
+        != "miles.rollout.on_policy_distillation.post_process_rewards"
+    ):
+        raise ValueError(
+            "--opd-log-task-reward requires --custom-reward-post-process-path "
+            "miles.rollout.on_policy_distillation.post_process_rewards."
+        )
+    rm_type = str(getattr(args, "rm_type", "") or "").strip()
+    if not rm_type:
+        raise ValueError("--opd-log-task-reward requires a built-in --rm-type.")
+    if rm_type.removeprefix("boxed_") == "remote_rm":
+        raise ValueError(
+            "--opd-log-task-reward does not support remote_rm because OPD reserves --rm-url for teacher scoring."
+        )
+
+
 def miles_validate_args(args):
     validate_dashboard_args(args)
 
@@ -2572,6 +2610,7 @@ def miles_validate_args(args):
             )
 
     # Validate on-policy distillation (OPD) arguments
+    _validate_opd_task_reward_args(args)
     if args.use_opd:
         if args.opd_type is None:
             raise ValueError("--opd-type must be specified when --use-opd is enabled. Choose 'sglang' or 'megatron'.")

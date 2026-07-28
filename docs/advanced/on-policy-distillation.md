@@ -16,6 +16,7 @@ On-policy distillation (OPD) trains a student model on its own rollouts while us
 | `--opd-scoring-timeout` | Total deadline in seconds for one external scoring request, including in-flight queueing, retries, and transport (default: `600`). |
 | `--opd-scoring-max-inflight` | Maximum concurrent external scoring requests per process (default: `8`). `0` disables the bound. |
 | `--opd-scoring-retries` | Number of retries within the same total scoring deadline (default: `1`). `0` fails after the first attempt. |
+| `--opd-log-task-reward` | Evaluate each training response with the configured built-in `--rm-type` and expose the score as `rollout/raw_reward`. Logging only: the optimization reward stays zero, so the learning signal remains the OPD KL penalty. |
 | `--opd-teacher-load` | Path to teacher Megatron checkpoint. **Required** when `--opd-type=megatron`, **must not be set** when `--opd-type=sglang`. |
 | `--opd-teacher-ckpt-step` | Optional checkpoint step for teacher model. |
 
