@@ -596,7 +596,7 @@ def _compute_topk_reverse_kl(
 
 async def _record_observed_task_reward(args: Namespace, sample: Sample) -> None:
     """Score task correctness for logging without touching OPD advantages."""
-    if not getattr(args, "opd_log_task_reward", False):
+    if not args.opd_log_task_reward:
         return
 
     task_rm_args = copy.copy(args)
@@ -720,7 +720,7 @@ def post_process_rewards(args: Namespace, samples: list[Sample], **kwargs: Any) 
     """
     teacher_rewards = [sample.get_reward_value(args) for sample in samples]
 
-    if getattr(args, "opd_log_task_reward", False):
+    if args.opd_log_task_reward:
         raw_rewards = []
         for sample in samples:
             if OPD_TASK_REWARD_METADATA_KEY not in (sample.metadata or {}):

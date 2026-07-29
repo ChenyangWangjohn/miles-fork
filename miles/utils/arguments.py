@@ -2471,7 +2471,7 @@ def _resolve_ft_components(args: argparse.Namespace) -> list[str]:
 
 
 def _validate_opd_task_reward_args(args) -> None:
-    if not getattr(args, "opd_log_task_reward", False):
+    if not args.opd_log_task_reward:
         return
     if not getattr(args, "use_opd", False):
         raise ValueError("--opd-log-task-reward requires --use-opd.")

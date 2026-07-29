@@ -203,6 +203,7 @@ def test_sampled_log_probs_empty_response_returns_empty_tensor():
 
 def _scoring_args(**overrides) -> Namespace:
     defaults = {
+        "opd_log_task_reward": False,
         "opd_scoring_timeout": 5.0,
         "opd_scoring_max_inflight": 0,
         "opd_scoring_retries": 0,
@@ -576,6 +577,34 @@ def test_zero_block_size_preserves_legacy_response_wide_union(monkeypatch):
 # ---------------------------------------------------------------------------
 # Observed task reward (--opd-log-task-reward)
 # ---------------------------------------------------------------------------
+
+
+def test_reward_func_records_observed_task_reward_before_teacher_scoring(monkeypatch):
+    args = _scoring_args(
+        opd_log_task_reward=True,
+        opd_log_prob_top_k=0,
+        rm_url="http://teacher/generate",
+    )
+    sample = _scored_sample()
+    calls = []
+
+    async def fake_async_rm(task_args, task_sample):
+        calls.append("task_reward")
+        assert task_args.custom_rm_path is None
+        assert task_sample is not sample
+        return 0.75
+
+    async def fake_scoring_post(args, url, payload, *, sample, target):
+        calls.append("teacher_scoring")
+        assert sample.metadata[opd.OPD_TASK_REWARD_METADATA_KEY] == 0.75
+        return {"meta_info": {}}
+
+    monkeypatch.setattr("miles.rollout.rm_hub.async_rm", fake_async_rm)
+    monkeypatch.setattr(opd, "_scoring_post", fake_scoring_post)
+
+    asyncio.run(reward_func(args, sample))
+
+    assert calls == ["task_reward", "teacher_scoring"]
 
 
 def test_observed_task_reward_uses_builtin_rm_without_mutating_training_args(monkeypatch):
