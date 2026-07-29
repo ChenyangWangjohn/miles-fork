@@ -1418,7 +1418,10 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--opd-scoring-retries",
                 type=int,
                 default=1,
-                help="Retries after a failed external OPD scoring request. Set to 0 to fail fast.",
+                help=(
+                    "Retries after a failed external OPD scoring request or a mixed-version "
+                    "blocked student-scoring attempt. Set to 0 to fail fast."
+                ),
             )
             parser.add_argument(
                 "--opd-teacher-load",

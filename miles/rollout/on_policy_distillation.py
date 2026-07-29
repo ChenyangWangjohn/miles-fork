@@ -119,15 +119,16 @@ def _scoring_semaphore(args: Namespace) -> asyncio.Semaphore | None:
     return semaphore
 
 
-async def _scoring_post(
+async def _scoring_request(
     args: Namespace,
     url: str,
     payload: dict[str, Any],
     *,
     sample: Sample,
     target: str,
+    action: str,
 ) -> dict[str, Any]:
-    """POST one scoring request through the shared HTTP client.
+    """Issue one scoring request through the shared HTTP client.
 
     Adds the bounded-transport contract on top of http_utils.post: an
     in-flight bound, a total deadline shared across retries, a bounded retry
@@ -172,7 +173,12 @@ async def _scoring_post(
                 # max_retries=1 gives exactly one attempt: the retry policy,
                 # attempt count and deadline are owned here where they can be
                 # bounded and reported.
-                return await asyncio.wait_for(post(url, payload, max_retries=1), timeout=remaining_s)
+                request = (
+                    post(url, payload, max_retries=1)
+                    if action == "post"
+                    else post(url, None, max_retries=1, action=action)
+                )
+                return await asyncio.wait_for(request, timeout=remaining_s)
             except (TimeoutError, asyncio.TimeoutError, httpx.HTTPError) as error:
                 remaining_s = deadline_s - time.monotonic()
                 if attempts >= max_attempts or remaining_s <= 0:
@@ -183,6 +189,27 @@ async def _scoring_post(
     finally:
         if semaphore_acquired:
             semaphore.release()
+
+
+async def _scoring_post(
+    args: Namespace,
+    url: str,
+    payload: dict[str, Any],
+    *,
+    sample: Sample,
+    target: str,
+) -> dict[str, Any]:
+    return await _scoring_request(args, url, payload, sample=sample, target=target, action="post")
+
+
+async def _scoring_get(
+    args: Namespace,
+    url: str,
+    *,
+    sample: Sample,
+    target: str,
+) -> dict[str, Any]:
+    return await _scoring_request(args, url, {}, sample=sample, target=target, action="get")
 
 
 def _top_entry_token_id(entry: list[Any]) -> int:
@@ -329,6 +356,31 @@ def _top_k_scoring_blocks(top_logprobs: TopLogprobs, block_size: int) -> Iterabl
         yield start, end, _unique_ids(top_logprobs[start:end])
 
 
+def _weight_version(value: Any, *, source: str) -> str:
+    if value is None or str(value) == "":
+        raise ValueError(f"{source} did not report a usable weight_version.")
+    return str(value)
+
+
+async def _student_weight_version(args: Namespace, sample: Sample) -> str:
+    response = await _scoring_get(
+        args,
+        f"http://{args.sglang_router_ip}:{args.sglang_router_port}/model_info",
+        sample=sample,
+        target="student-version",
+    )
+    if not isinstance(response, dict) or "weight_version" not in response:
+        raise ValueError("Student model_info response is missing weight_version.")
+    return _weight_version(response["weight_version"], source="Student model_info")
+
+
+def _response_weight_version(response: dict[str, Any], *, target: str) -> str:
+    meta_info = response.get("meta_info")
+    if not isinstance(meta_info, dict) or "weight_version" not in meta_info:
+        raise ValueError(f"{target} scoring response is missing meta_info.weight_version.")
+    return _weight_version(meta_info["weight_version"], source=f"{target} scoring response")
+
+
 def _validate_block_token_alignment(
     response: dict[str, Any],
     sample: Sample,
@@ -405,6 +457,7 @@ async def _score_top_k_in_blocks(
     candidate_rows: TopLogprobs,
     *,
     target: str,
+    require_stable_weight_version: bool = False,
 ) -> dict[str, Any]:
     """Score position-local candidates without a response-wide Cartesian product.
 
@@ -424,29 +477,59 @@ async def _score_top_k_in_blocks(
         raise ValueError("Blocked OPD top-k scoring requires --opd-top-k-scoring-block-size > 0.")
 
     prompt_length = len(sample.tokens) - response_length
-    compact_rows: TopLogprobs = [[] for _ in range(response_length)]
-    for start, end, candidate_ids in _top_k_scoring_blocks(candidate_rows, block_size):
-        if not candidate_ids:
-            continue
+    transaction_attempts = max(0, int(args.opd_scoring_retries)) + 1 if require_stable_weight_version else 1
+    last_version_error: RuntimeError | None = None
 
-        block_input_ids = sample.tokens[: prompt_length + end]
-        response = await _scoring_post(
-            args,
-            url,
-            _score_payload(block_input_ids, end - start, token_ids=candidate_ids),
-            sample=sample,
-            target=target,
-        )
-        _validate_block_token_alignment(response, sample, start=start, end=end, target=target)
-        compact_rows[start:end] = _compact_block_logprobs(
-            response,
-            candidate_rows,
-            start=start,
-            end=end,
-            target=target,
-        )
+    for transaction_attempt in range(1, transaction_attempts + 1):
+        expected_version = await _student_weight_version(args, sample) if require_stable_weight_version else None
+        compact_rows: TopLogprobs = [[] for _ in range(response_length)]
+        version_error = None
 
-    return {"meta_info": {"input_token_ids_logprobs": [None, *compact_rows]}}
+        for start, end, candidate_ids in _top_k_scoring_blocks(candidate_rows, block_size):
+            if not candidate_ids:
+                continue
+
+            block_input_ids = sample.tokens[: prompt_length + end]
+            response = await _scoring_post(
+                args,
+                url,
+                _score_payload(block_input_ids, end - start, token_ids=candidate_ids),
+                sample=sample,
+                target=target,
+            )
+            _validate_block_token_alignment(response, sample, start=start, end=end, target=target)
+            compact_rows[start:end] = _compact_block_logprobs(
+                response,
+                candidate_rows,
+                start=start,
+                end=end,
+                target=target,
+            )
+
+            if require_stable_weight_version:
+                block_version = _response_weight_version(response, target=target)
+                if block_version != expected_version:
+                    version_error = RuntimeError(
+                        f"{target} weight version changed during blocked OPD scoring: "
+                        f"expected {expected_version!r}, got {block_version!r} for response positions "
+                        f"[{start}, {end}) (sample index={sample.index}, group={sample.group_index})."
+                    )
+                    break
+
+        if version_error is None:
+            meta_info = {"input_token_ids_logprobs": [None, *compact_rows]}
+            if expected_version is not None:
+                meta_info["weight_version"] = expected_version
+            return {"meta_info": meta_info}
+
+        last_version_error = version_error
+        if transaction_attempt < transaction_attempts:
+            await asyncio.sleep(_SCORING_RETRY_BACKOFF_S)
+
+    raise RuntimeError(
+        f"Unable to score all {target} blocks with one weight version after "
+        f"{transaction_attempts} attempt(s); refusing to assemble mixed-version scores."
+    ) from last_version_error
 
 
 def _ordered_unique(ids: Iterable[int]) -> list[int]:
@@ -690,6 +773,7 @@ async def reward_func(args: Namespace, sample: Sample, **kwargs: Any) -> dict[st
                 sample,
                 teacher_top,
                 target="student",
+                require_stable_weight_version=True,
             )
         else:
             student_token_ids = _unique_ids(teacher_top)

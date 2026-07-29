@@ -36,6 +36,10 @@ environment overrides for controlled comparisons. Set
 `OPD_TOP_K_SCORING_BLOCK_SIZE=0` only when reproducing the legacy
 response-wide candidate union.
 
-Run the `only-teacher` pair with the synchronous example above. Its opposite-model
-rescoring targets the student rollout router, so a fully asynchronous run would
-also need to establish that all blocks use a compatible student weight version.
+For `only-teacher`, blocked opposite-model rescoring snapshots the student
+router's current weight version and accepts the assembled rows only when every
+block reports that version. A version change discards the partial rows and
+retries the complete student-scoring transaction; retry exhaustion fails
+instead of emitting mixed-version scores. This makes the blocked path safe to
+compose with fully asynchronous rollout while preserving its normal stale-data
+semantics.

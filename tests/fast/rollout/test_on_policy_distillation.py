@@ -235,6 +235,45 @@ def test_scoring_post_retries_after_timeout_then_succeeds(monkeypatch):
     assert calls["count"] == 2
 
 
+def test_student_weight_version_reads_router_model_info(monkeypatch):
+    seen = {}
+
+    async def fake_scoring_get(args, url, *, sample, target):
+        seen["url"] = url
+        seen["target"] = target
+        return {"weight_version": 12}
+
+    monkeypatch.setattr(opd, "_scoring_get", fake_scoring_get)
+
+    version = asyncio.run(
+        opd._student_weight_version(
+            _scoring_args(sglang_router_ip="student", sglang_router_port=30000),
+            _scored_sample(),
+        )
+    )
+
+    assert version == "12"
+    assert seen == {
+        "url": "http://student:30000/model_info",
+        "target": "student-version",
+    }
+
+
+def test_student_weight_version_requires_version_metadata(monkeypatch):
+    async def fake_scoring_get(args, url, *, sample, target):
+        return {"model_path": "student"}
+
+    monkeypatch.setattr(opd, "_scoring_get", fake_scoring_get)
+
+    with pytest.raises(ValueError, match="missing weight_version"):
+        asyncio.run(
+            opd._student_weight_version(
+                _scoring_args(sglang_router_ip="student", sglang_router_port=30000),
+                _scored_sample(),
+            )
+        )
+
+
 def test_scoring_post_fails_fast_with_zero_retries(monkeypatch):
     async def failing_post(url, payload, max_retries=1):
         raise httpx.ConnectError("connection refused")
@@ -416,24 +455,31 @@ def _candidate_score(target: str, position: int, token_id: int) -> float:
     return -(target_offset + 0.05 * position + 0.01 * token_id)
 
 
-def _blocked_reply(sample: Sample, payload: dict, target: str) -> dict:
+def _blocked_reply(
+    sample: Sample,
+    payload: dict,
+    target: str,
+    *,
+    weight_version: str | None = None,
+) -> dict:
     prompt_length = len(sample.tokens) - sample.response_length
     start = payload["logprob_start_len"] + 1 - prompt_length
     end = len(payload["input_ids"]) - prompt_length
     response_tokens = sample.tokens[prompt_length + start : prompt_length + end]
     candidate_ids = payload["token_ids_logprob"]
-    return {
-        "meta_info": {
-            "input_token_logprobs": [None, *[[-1.0, token_id] for token_id in response_tokens]],
-            "input_token_ids_logprobs": [
-                None,
-                *[
-                    [[_candidate_score(target, position, token_id), token_id] for token_id in candidate_ids]
-                    for position in range(start, end)
-                ],
+    meta_info = {
+        "input_token_logprobs": [None, *[[-1.0, token_id] for token_id in response_tokens]],
+        "input_token_ids_logprobs": [
+            None,
+            *[
+                [[_candidate_score(target, position, token_id), token_id] for token_id in candidate_ids]
+                for position in range(start, end)
             ],
-        }
+        ],
     }
+    if weight_version is not None:
+        meta_info["weight_version"] = weight_version
+    return {"meta_info": meta_info}
 
 
 def _global_candidate_reply(sample: Sample, candidate_rows: list[list], target: str) -> dict:
@@ -507,9 +553,13 @@ def test_only_teacher_block_scoring_matches_response_wide_union(monkeypatch, wei
         calls.append((url, payload, target))
         if target == "teacher":
             return teacher_response
-        return _blocked_reply(sample, payload, target)
+        return _blocked_reply(sample, payload, target, weight_version="7")
+
+    async def fake_student_weight_version(args, sample):
+        return "7"
 
     monkeypatch.setattr(opd, "_scoring_post", fake_scoring_post)
+    monkeypatch.setattr(opd, "_student_weight_version", fake_student_weight_version)
 
     blocked_payload = asyncio.run(reward_func(args, sample))
     legacy_payload = {
@@ -524,6 +574,86 @@ def test_only_teacher_block_scoring_matches_response_wide_union(monkeypatch, wei
     assert calls[0][2] == "teacher"
     assert "token_ids_logprob" not in calls[0][1]
     assert [call[1]["token_ids_logprob"] for call in calls[1:]] == [[1, 2, 3], [4, 5, 6]]
+    assert blocked_payload["student_on_teacher"]["meta_info"]["weight_version"] == "7"
+
+
+def test_only_teacher_retries_all_blocks_after_student_version_change(monkeypatch):
+    sample = Sample(tokens=[10, 11, 12, 13, 14, 15], response_length=4)
+    args = _blocked_top_k_args("only-teacher")
+    args.opd_scoring_retries = 1
+    teacher_top = [
+        [_entry(0.6, 1), _entry(0.4, 2)],
+        [_entry(0.7, 2), _entry(0.3, 3)],
+        [_entry(0.8, 4), _entry(0.2, 5)],
+        [_entry(0.9, 5), _entry(0.1, 6)],
+    ]
+    teacher_response = {
+        "meta_info": {
+            "input_token_logprobs": [None, *[[-1.0, token_id] for token_id in sample.tokens[-4:]]],
+            "input_top_logprobs": [None, *teacher_top],
+        }
+    }
+    expected_versions = iter(["7", "8"])
+    block_versions = iter(["7", "8", "8", "8"])
+    student_calls = []
+
+    async def fake_student_weight_version(args, sample):
+        return next(expected_versions)
+
+    async def fake_scoring_post(args, url, payload, *, sample, target):
+        if target == "teacher":
+            return teacher_response
+        student_calls.append(payload)
+        return _blocked_reply(sample, payload, target, weight_version=next(block_versions))
+
+    monkeypatch.setattr(opd, "_SCORING_RETRY_BACKOFF_S", 0)
+    monkeypatch.setattr(opd, "_student_weight_version", fake_student_weight_version)
+    monkeypatch.setattr(opd, "_scoring_post", fake_scoring_post)
+
+    reward_payload = asyncio.run(reward_func(args, sample))
+
+    assert len(student_calls) == 4
+    assert reward_payload["student_on_teacher"]["meta_info"]["weight_version"] == "8"
+    assert [payload["token_ids_logprob"] for payload in student_calls] == [
+        [1, 2, 3],
+        [4, 5, 6],
+        [1, 2, 3],
+        [4, 5, 6],
+    ]
+
+
+def test_only_teacher_rejects_mixed_student_versions_after_retry_budget(monkeypatch):
+    sample = Sample(tokens=[10, 11, 12, 13, 14, 15], response_length=4)
+    args = _blocked_top_k_args("only-teacher")
+    args.opd_scoring_retries = 1
+    teacher_top = [
+        [_entry(0.6, 1), _entry(0.4, 2)],
+        [_entry(0.7, 2), _entry(0.3, 3)],
+        [_entry(0.8, 4), _entry(0.2, 5)],
+        [_entry(0.9, 5), _entry(0.1, 6)],
+    ]
+    teacher_response = {
+        "meta_info": {
+            "input_token_logprobs": [None, *[[-1.0, token_id] for token_id in sample.tokens[-4:]]],
+            "input_top_logprobs": [None, *teacher_top],
+        }
+    }
+    block_versions = iter(["7", "8", "7", "8"])
+
+    async def fake_student_weight_version(args, sample):
+        return "7"
+
+    async def fake_scoring_post(args, url, payload, *, sample, target):
+        if target == "teacher":
+            return teacher_response
+        return _blocked_reply(sample, payload, target, weight_version=next(block_versions))
+
+    monkeypatch.setattr(opd, "_SCORING_RETRY_BACKOFF_S", 0)
+    monkeypatch.setattr(opd, "_student_weight_version", fake_student_weight_version)
+    monkeypatch.setattr(opd, "_scoring_post", fake_scoring_post)
+
+    with pytest.raises(RuntimeError, match="refusing to assemble mixed-version scores"):
+        asyncio.run(reward_func(args, sample))
 
 
 def test_top_k_block_scoring_rejects_missing_candidate(monkeypatch):

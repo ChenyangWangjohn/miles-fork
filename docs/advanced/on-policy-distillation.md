@@ -15,7 +15,7 @@ On-policy distillation (OPD) trains a student model on its own rollouts while us
 | `--opd-top-k-scoring-block-size` | Response positions grouped into one arbitrary-ID scoring request for `only-student` and `only-teacher` (default: `32`). `0` restores the legacy response-wide candidate union. |
 | `--opd-scoring-timeout` | Total deadline in seconds for one external scoring request, including in-flight queueing, retries, and transport (default: `600`). |
 | `--opd-scoring-max-inflight` | Maximum concurrent external scoring requests per process (default: `8`). `0` disables the bound. |
-| `--opd-scoring-retries` | Number of retries within the same total scoring deadline (default: `1`). `0` fails after the first attempt. |
+| `--opd-scoring-retries` | Number of retries for a failed external request or a mixed-version blocked student-scoring attempt (default: `1`). Each external request retains its own total deadline; `0` fails after the first attempt. |
 | `--opd-log-task-reward` | Evaluate each training response with the configured built-in `--rm-type` and expose the score as `rollout/raw_reward`. Logging only: the optimization reward stays zero, so the learning signal remains the OPD KL penalty. |
 | `--opd-teacher-load` | Path to teacher Megatron checkpoint. **Required** when `--opd-type=megatron`, **must not be set** when `--opd-type=sglang`. |
 | `--opd-teacher-ckpt-step` | Optional checkpoint step for teacher model. |
@@ -60,6 +60,22 @@ prefix-scoring requests; SGLang's prefix cache can reuse the shared prefixes.
 This bounds the candidate-logprob response, not the total request body: each
 block still sends the growing input prefix, so smaller blocks trade candidate
 response size for more repeated input-ID transfer and request scheduling.
+
+For `only-teacher`, the bounded requests target the mutable student rollout
+router. Miles treats all blocks for one sample as an optimistic version
+transaction: it reads `/model_info` before the first block and accepts the
+assembled result only when every block reports that same
+`meta_info.weight_version`. If a fully asynchronous weight update lands between
+blocks, all partial rows are discarded and the complete student-scoring
+transaction is retried within `--opd-scoring-retries`; exhausting the retry
+budget fails loudly instead of training on mixed-version scores.
+
+With SGLang's `pause_generation_mode=retract`, an update also clears a running
+request's KV and accumulated input logprobs before re-prefilling it under the
+new weights. The transaction check adds the missing cross-request invariant:
+every accepted block now comes from one student snapshot. A weight update after
+the last block is harmless; the accepted snapshot is merely stale, which is an
+expected property of fully asynchronous training.
 
 ## Two Teacher Modes
 
