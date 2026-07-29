@@ -1,0 +1,1448 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Miles upstream contribution and validation plan">
+  <title>Miles Upstream Contribution Plan</title>
+  <style>
+    :root {
+      --paper: #fcfbf7;
+      --paper-deep: #f3efe6;
+      --ink: #262421;
+      --ink-soft: #514c46;
+      --muted: #746d65;
+      --faint: #9b9389;
+      --line: #d9d2c7;
+      --line-soft: #ebe6de;
+      --warm: #b64a31;
+      --warm-dark: #7f3424;
+      --warm-soft: #f5ddd3;
+      --amber: #c78a31;
+      --amber-soft: #f6e9cb;
+      --blue: #477b87;
+      --blue-dark: #28535d;
+      --blue-soft: #dcebed;
+      --green: #5d7762;
+      --green-soft: #e2ebe2;
+      --red: #a63d32;
+      --red-soft: #f4dedb;
+      --code-bg: #f1ede6;
+      --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      --sans: "Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+      --shadow: 0 8px 24px rgba(57, 47, 37, .055);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+    body {
+      margin: 0;
+      overflow-x: clip;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 17px;
+      line-height: 1.62;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    a {
+      color: inherit;
+      text-decoration-color: color-mix(in srgb, var(--warm) 48%, transparent);
+      text-underline-offset: 3px;
+    }
+    a:hover { color: var(--warm); }
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 3px;
+    }
+    button { letter-spacing: 0; }
+    code,
+    .mono {
+      font-family: var(--mono);
+      font-size: .88em;
+      font-variant-numeric: tabular-nums;
+    }
+    code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--code-bg);
+      color: var(--warm-dark);
+      overflow-wrap: anywhere;
+    }
+
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      padding: 0 24px;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+      background: color-mix(in srgb, var(--paper) 92%, transparent);
+      backdrop-filter: blur(14px);
+      font: 13px/1 var(--sans);
+    }
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 11px;
+      min-width: 0;
+      text-decoration: none;
+    }
+    .brand strong { font-size: 15px; font-weight: 680; }
+    .brand span {
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .site-nav { display: flex; gap: 22px; }
+    .site-nav a { color: var(--ink-soft); text-decoration: none; }
+
+    .hero {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 70px 28px 36px;
+      animation: rise-in 540ms ease-out both;
+    }
+    .hero-copy {
+      max-width: 860px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .eyebrow {
+      margin: 0 0 15px;
+      color: var(--warm);
+      font: 650 12px/1.4 var(--sans);
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 830px;
+      margin: 0 auto;
+      font: 600 48px/1.08 var(--serif);
+      text-wrap: balance;
+    }
+    .subtitle {
+      max-width: 735px;
+      margin: 20px auto 0;
+      color: var(--ink-soft);
+      font-size: 19px;
+      line-height: 1.5;
+      text-wrap: pretty;
+    }
+    .byline {
+      margin: 13px 0 0;
+      color: var(--muted);
+      font: 13px/1.55 var(--sans);
+    }
+
+    .hero-plan {
+      display: grid;
+      grid-template-columns: 1fr 74px 1.2fr 74px 1fr;
+      align-items: center;
+      margin: 46px auto 4px;
+    }
+    .hero-stage { min-width: 0; text-align: center; }
+    .stage-kicker { color: var(--muted); font: 12px/1.35 var(--sans); }
+    .stage-title { margin-top: 12px; font: 650 16px/1.35 var(--sans); }
+    .stage-note { margin-top: 5px; color: var(--muted); font: 12px/1.45 var(--sans); }
+    .repo-mark,
+    .run-mark,
+    .pr-mark {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 46px;
+      margin-top: 13px;
+    }
+    .repo-mark span {
+      display: block;
+      width: 86px;
+      height: 35px;
+      border: 1px solid color-mix(in srgb, var(--blue) 44%, var(--line));
+      border-radius: 5px;
+      background: var(--blue-soft);
+      box-shadow: 7px 7px 0 var(--paper), 8px 8px 0 var(--line);
+    }
+    .run-mark { gap: 7px; align-items: flex-end; }
+    .run-mark i {
+      display: block;
+      width: 20px;
+      border-radius: 2px 2px 0 0;
+      background: var(--amber);
+      transform-origin: bottom;
+      animation: bar-grow 500ms ease-out both;
+    }
+    .run-mark i:nth-child(1) { height: 17px; opacity: .42; }
+    .run-mark i:nth-child(2) { height: 35px; animation-delay: 80ms; }
+    .run-mark i:nth-child(3) { height: 26px; opacity: .7; animation-delay: 140ms; }
+    .run-mark i:nth-child(4) { height: 40px; animation-delay: 200ms; }
+    .pr-mark { gap: 6px; }
+    .pr-mark span {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid color-mix(in srgb, var(--green) 42%, var(--line));
+      border-radius: 4px;
+      background: var(--green-soft);
+      color: var(--green);
+      font: 700 13px/1 var(--mono);
+    }
+    .hero-arrow {
+      position: relative;
+      height: 1px;
+      margin: 0 12px;
+      background: var(--line);
+    }
+    .hero-arrow::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: -4px;
+      width: 8px;
+      height: 8px;
+      border-top: 1px solid var(--muted);
+      border-right: 1px solid var(--muted);
+      transform: rotate(45deg);
+    }
+
+    .page-grid {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 760px) 210px;
+      gap: 46px;
+      justify-content: center;
+      max-width: 1390px;
+      margin: 0 auto;
+      padding: 20px 28px 96px;
+    }
+    .toc {
+      position: sticky;
+      top: 88px;
+      align-self: start;
+      font: 13px/1.42 var(--sans);
+    }
+    .toc-title {
+      margin: 0 0 12px;
+      color: var(--faint);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .toc ol {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border-left: 1px solid var(--line);
+    }
+    .toc a {
+      position: relative;
+      display: block;
+      padding: 6px 0 6px 17px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 160ms ease, transform 160ms ease;
+    }
+    .toc a::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: 8px;
+      width: 2px;
+      height: 16px;
+      background: transparent;
+    }
+    .toc a.active { color: var(--ink); transform: translateX(3px); }
+    .toc a.active::before { background: var(--warm); }
+
+    .article { grid-column: 2; min-width: 0; }
+    .article > h2 {
+      scroll-margin-top: 82px;
+      margin: 64px 0 20px;
+      font: 600 29px/1.25 var(--serif);
+      text-wrap: balance;
+    }
+    .article > h2:first-of-type { margin-top: 8px; }
+    .article h3 { margin: 40px 0 14px; font: 500 22px/1.35 var(--serif); }
+    .article p { margin: 0 0 22px; }
+    .article ul,
+    .article ol { margin: 0 0 24px; padding-left: 24px; }
+    .article li { margin: 6px 0; }
+    strong { font-weight: 680; }
+
+    .margin-rail {
+      grid-column: 3;
+      position: sticky;
+      top: 88px;
+      align-self: start;
+      color: var(--muted);
+      font: 12px/1.55 var(--sans);
+    }
+    .rail-block {
+      margin-bottom: 25px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .rail-label {
+      margin-bottom: 7px;
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .callout {
+      margin: 28px 0;
+      padding: 20px 24px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--warm);
+      border-radius: 6px;
+      background: #fffefa;
+      box-shadow: var(--shadow);
+    }
+    .callout ul { margin-bottom: 0; }
+    .callout.blue { border-left-color: var(--blue); }
+    .callout.green { border-left-color: var(--green); }
+    .callout-title {
+      margin: 0 0 9px;
+      font: 700 12px/1.4 var(--sans);
+      text-transform: uppercase;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin: 26px 0 32px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .summary-item {
+      min-width: 0;
+      padding: 19px 18px 20px;
+      border-right: 1px solid var(--line);
+    }
+    .summary-item:last-child { border-right: 0; }
+    .summary-value {
+      color: var(--warm);
+      font: 600 32px/1 var(--serif);
+      font-variant-numeric: tabular-nums;
+    }
+    .summary-label { margin-top: 7px; color: var(--ink-soft); font: 650 13px/1.35 var(--sans); }
+    .summary-note { margin-top: 5px; color: var(--muted); font: 11px/1.45 var(--sans); }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 7px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font: 650 10px/1.3 var(--sans);
+      text-transform: uppercase;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .status.ready { border-color: #aabdae; background: var(--green-soft); color: #49634f; }
+    .status.plan { border-color: #d6bc85; background: var(--amber-soft); color: #805a1d; }
+    .status.dep { border-color: #a9c2c7; background: var(--blue-soft); color: #315e67; }
+    .status.stop { border-color: #d6aaa5; background: var(--red-soft); color: #7e332b; }
+
+    .track-shell {
+      margin: 30px 0 34px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fffefa;
+      box-shadow: var(--shadow);
+    }
+    .track-title {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font: 700 11px/1.4 var(--sans);
+      text-transform: uppercase;
+    }
+    .track {
+      display: grid;
+      grid-template-columns: 124px minmax(0, 1fr);
+      align-items: center;
+      gap: 14px;
+      margin: 14px 0;
+    }
+    .track-label { color: var(--ink-soft); font: 650 12px/1.35 var(--sans); }
+    .track-line {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+      align-items: stretch;
+    }
+    .track-line.parallel .track-node::before,
+    .track-line.parallel .track-node::after,
+    .track-line.single .track-node::before,
+    .track-line.single .track-node::after { display: none; }
+    .track-line.single .track-node { grid-column: 1 / -1; }
+    .track-node {
+      position: relative;
+      min-height: 72px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--paper);
+      font: 12px/1.35 var(--sans);
+    }
+    .track-node::after {
+      content: "";
+      position: absolute;
+      left: 100%;
+      top: 50%;
+      width: 23px;
+      height: 1px;
+      background: var(--line);
+    }
+    .track-node::before {
+      content: "";
+      position: absolute;
+      left: calc(100% + 16px);
+      top: calc(50% - 4px);
+      width: 7px;
+      height: 7px;
+      border-top: 1px solid var(--muted);
+      border-right: 1px solid var(--muted);
+      transform: rotate(45deg);
+      z-index: 2;
+    }
+    .track-node:last-child::before,
+    .track-node:last-child::after { display: none; }
+    .track-node strong { display: block; margin-bottom: 4px; font-size: 13px; }
+    .track-node small { color: var(--muted); font-size: 10px; }
+    .track-node.independent { border-color: color-mix(in srgb, var(--blue) 45%, var(--line)); background: var(--blue-soft); }
+    .track-node.opd { border-color: color-mix(in srgb, var(--warm) 45%, var(--line)); background: var(--warm-soft); }
+    .track-node.integration { border-color: color-mix(in srgb, var(--amber) 48%, var(--line)); background: var(--amber-soft); }
+    .track-node.example { border-color: color-mix(in srgb, var(--green) 45%, var(--line)); background: var(--green-soft); }
+
+    .segmented {
+      display: inline-flex;
+      margin: 3px 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper-deep);
+      padding: 3px;
+      font: 650 12px/1 var(--sans);
+    }
+    .segmented button {
+      border: 0;
+      border-radius: 4px;
+      padding: 9px 13px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .segmented button[aria-selected="true"] {
+      background: #fffefa;
+      color: var(--ink);
+      box-shadow: 0 1px 4px rgba(52, 44, 36, .11);
+    }
+    .view-panel[hidden] { display: none; }
+
+    .pr-browser {
+      margin: 24px 0 36px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      overflow: hidden;
+      background: #fffefa;
+      box-shadow: var(--shadow);
+    }
+    .pr-tabs {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line);
+      background: var(--paper-deep);
+    }
+    .pr-tab {
+      min-height: 58px;
+      padding: 9px 7px;
+      border: 0;
+      border-right: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      font: 650 11px/1.3 var(--sans);
+      cursor: pointer;
+    }
+    .pr-tab:last-child { border-right: 0; }
+    .pr-tab span { display: block; margin-top: 3px; color: var(--faint); font-size: 9px; }
+    .pr-tab[aria-selected="true"] {
+      background: #fffefa;
+      color: var(--warm-dark);
+      box-shadow: inset 0 3px 0 var(--warm);
+    }
+    .pr-detail {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(230px, .65fr);
+      gap: 30px;
+      min-height: 360px;
+      padding: 27px 29px 29px;
+    }
+    .pr-detail h3 { margin: 0 0 8px; font-size: 24px; }
+    .pr-subtitle { margin: 0 0 21px; color: var(--muted); font: 13px/1.55 var(--sans); }
+    .detail-list {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 12px 16px;
+      margin: 0;
+      font: 13px/1.52 var(--sans);
+    }
+    .detail-list dt { color: var(--faint); font-weight: 700; text-transform: uppercase; }
+    .detail-list dd { margin: 0; color: var(--ink-soft); }
+    .acceptance {
+      padding: 18px;
+      border-left: 1px solid var(--line);
+      background: color-mix(in srgb, var(--paper-deep) 57%, transparent);
+    }
+    .acceptance h4 { margin: 0 0 12px; font: 700 12px/1.4 var(--sans); text-transform: uppercase; }
+    .acceptance ul { margin: 0; padding-left: 18px; color: var(--ink-soft); font: 12px/1.5 var(--sans); }
+
+    .mechanism {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
+      align-items: stretch;
+      margin: 29px 0 35px;
+    }
+    .mechanism-pane {
+      min-width: 0;
+      padding: 21px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fffefa;
+    }
+    .mechanism-pane.bad { border-top: 3px solid var(--red); }
+    .mechanism-pane.good { border-top: 3px solid var(--green); }
+    .mechanism-pane h4 { margin: 0 0 13px; font: 700 12px/1.4 var(--sans); text-transform: uppercase; }
+    .mechanism-arrow {
+      position: relative;
+      align-self: center;
+      height: 1px;
+      margin: 0 8px;
+      background: var(--line);
+    }
+    .mechanism-arrow::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: -4px;
+      width: 8px;
+      height: 8px;
+      border-top: 1px solid var(--muted);
+      border-right: 1px solid var(--muted);
+      transform: rotate(45deg);
+    }
+    .tensor-flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px;
+      margin: 15px 0 12px;
+      font: 650 11px/1.3 var(--mono);
+    }
+    .tensor {
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code-bg);
+      color: var(--ink-soft);
+    }
+    .tensor.bad { border-color: #d7aaa6; background: var(--red-soft); color: #79352f; }
+    .tensor.good { border-color: #abc0af; background: var(--green-soft); color: #49634f; }
+    .inline-arrow { color: var(--faint); font-family: var(--sans); }
+    .mechanism-note { margin: 0; color: var(--muted); font: 12px/1.55 var(--sans); }
+
+    .equation-block {
+      margin: 28px 0 31px;
+      padding: 24px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--paper-deep) 52%, transparent);
+      overflow-x: auto;
+    }
+    .equation {
+      min-width: 520px;
+      text-align: center;
+      font: 25px/1.7 var(--serif);
+      white-space: nowrap;
+    }
+    .equation sub { font-size: .62em; }
+    .equation .sg { color: var(--blue-dark); font-style: normal; }
+    .equation-caption {
+      max-width: 650px;
+      margin: 12px auto 0;
+      color: var(--muted);
+      text-align: center;
+      font: 12px/1.55 var(--sans);
+    }
+
+    .experiment-grid {
+      display: grid;
+      grid-template-columns: 116px minmax(0, 1fr) minmax(0, 1fr);
+      margin: 26px 0 34px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      overflow: hidden;
+      background: #fffefa;
+      box-shadow: var(--shadow);
+    }
+    .exp-cell {
+      min-width: 0;
+      min-height: 108px;
+      padding: 16px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      font: 12px/1.5 var(--sans);
+    }
+    .exp-cell:nth-child(3n) { border-right: 0; }
+    .exp-cell:nth-last-child(-n + 3) { border-bottom: 0; }
+    .exp-head {
+      min-height: auto;
+      background: var(--paper-deep);
+      color: var(--ink-soft);
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .exp-rowhead { background: var(--paper-deep); color: var(--ink-soft); font-weight: 700; }
+    .exp-cell strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; }
+    .exp-cell small { display: block; margin-top: 7px; color: var(--muted); line-height: 1.45; }
+    .exp-control { border-top: 3px solid var(--faint); }
+    .exp-treatment { border-top: 3px solid var(--warm); }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin: 25px 0 32px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .metric {
+      min-width: 0;
+      padding: 17px 14px;
+      border-right: 1px solid var(--line);
+    }
+    .metric:last-child { border-right: 0; }
+    .metric-name { color: var(--ink-soft); font: 650 11px/1.35 var(--sans); }
+    .metric-value { margin-top: 8px; color: var(--warm-dark); font: 600 18px/1.15 var(--mono); }
+    .metric-note { margin-top: 6px; color: var(--muted); font: 10px/1.4 var(--sans); }
+
+    table {
+      width: 100%;
+      margin: 25px 0 34px;
+      border-collapse: collapse;
+      font: 12px/1.48 var(--sans);
+    }
+    th {
+      padding: 10px 11px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      text-align: left;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+    td {
+      padding: 13px 11px;
+      border-bottom: 1px solid var(--line-soft);
+      vertical-align: top;
+    }
+    td:first-child { white-space: nowrap; }
+
+    .timeline {
+      position: relative;
+      margin: 28px 0 38px;
+      padding-left: 33px;
+    }
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      bottom: 14px;
+      width: 1px;
+      background: var(--line);
+    }
+    .timeline-step {
+      position: relative;
+      margin: 0 0 27px;
+      padding: 0 0 0 7px;
+    }
+    .timeline-step::before {
+      content: "";
+      position: absolute;
+      left: -29px;
+      top: 5px;
+      width: 9px;
+      height: 9px;
+      border: 2px solid var(--paper);
+      border-radius: 50%;
+      background: var(--warm);
+      box-shadow: 0 0 0 1px var(--warm);
+    }
+    .timeline-step h4 { margin: 0 0 5px; font: 680 14px/1.35 var(--sans); }
+    .timeline-step p { margin: 0; color: var(--muted); font: 12px/1.55 var(--sans); }
+
+    pre {
+      margin: 19px 0 28px;
+      padding: 17px 18px;
+      overflow-x: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: var(--code-bg);
+      color: var(--ink-soft);
+      font: 12px/1.65 var(--mono);
+    }
+
+    .decision {
+      margin: 31px 0;
+      padding: 22px 0 22px 23px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      border-left: 3px solid var(--green);
+    }
+    .decision strong { display: block; margin-bottom: 5px; font-family: var(--sans); }
+    .decision p { margin: 0; color: var(--ink-soft); }
+
+    footer {
+      margin-top: 62px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font: 11px/1.6 var(--sans);
+    }
+
+    @keyframes rise-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes bar-grow {
+      from { transform: scaleY(.15); opacity: .25; }
+      to { transform: scaleY(1); }
+    }
+
+    @media (max-width: 1120px) {
+      .page-grid { grid-template-columns: 185px minmax(0, 760px); gap: 38px; }
+      .margin-rail { display: none; }
+      .article { grid-column: 2; }
+    }
+    @media (max-width: 860px) {
+      .site-nav { display: none; }
+      .hero { padding-top: 52px; }
+      h1 { font-size: 40px; }
+      .hero-plan { grid-template-columns: 1fr; gap: 18px; max-width: 430px; }
+      .hero-arrow {
+        width: 1px;
+        height: 25px;
+        margin: 0 auto;
+      }
+      .hero-arrow::after {
+        right: -4px;
+        top: 17px;
+        transform: rotate(135deg);
+      }
+      .page-grid { display: block; padding: 12px 22px 76px; }
+      .toc { display: none; }
+      .article { max-width: 760px; margin: 0 auto; }
+      .track { grid-template-columns: 1fr; }
+      .track-line { gap: 12px; }
+      .track-node::after,
+      .track-node::before { display: none; }
+      .pr-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .pr-tab:nth-child(2n) { border-right: 0; }
+      .pr-tab:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+      .pr-detail { grid-template-columns: 1fr; }
+      .acceptance { border-left: 0; border-top: 1px solid var(--line); }
+    }
+    @media (max-width: 620px) {
+      body { font-size: 16px; }
+      .site-header { padding: 0 16px; }
+      .brand span { display: none; }
+      .hero { padding: 43px 18px 25px; }
+      h1 { font-size: 34px; }
+      .subtitle { font-size: 17px; }
+      .summary-grid { grid-template-columns: 1fr; }
+      .summary-item { border-right: 0; border-bottom: 1px solid var(--line); }
+      .summary-item:last-child { border-bottom: 0; }
+      .track-shell { padding: 18px; }
+      .track-line { grid-template-columns: 1fr; }
+      .pr-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .pr-tab:nth-child(3) { border-right: 1px solid var(--line); }
+      .pr-tab:nth-child(2n) { border-right: 0; }
+      .pr-tab:nth-child(-n + 4) { border-bottom: 1px solid var(--line); }
+      .pr-detail { padding: 21px 19px; }
+      .detail-list { grid-template-columns: 1fr; gap: 4px; }
+      .detail-list dd { margin-bottom: 12px; }
+      .mechanism { grid-template-columns: 1fr; gap: 15px; }
+      .mechanism-arrow {
+        width: 1px;
+        height: 24px;
+        margin: 0 auto;
+      }
+      .mechanism-arrow::after {
+        right: -4px;
+        top: 16px;
+        transform: rotate(135deg);
+      }
+      .experiment-grid { grid-template-columns: 82px minmax(0, 1fr) minmax(0, 1fr); }
+      .exp-cell { padding: 11px; }
+      .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metric:nth-child(2) { border-right: 0; }
+      .metric:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+      table { display: block; overflow-x: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *,
+      *::before,
+      *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+    @media print {
+      .site-header,
+      .toc,
+      .margin-rail,
+      .segmented,
+      .pr-tabs { display: none !important; }
+      body { background: white; font-size: 11pt; }
+      .hero { padding-top: 20px; }
+      .page-grid { display: block; max-width: none; padding: 0; }
+      .article { max-width: none; }
+      .view-panel[hidden] { display: block; }
+      .pr-detail { display: block; min-height: 0; box-shadow: none; }
+      .acceptance { margin-top: 18px; border-left: 0; border-top: 1px solid var(--line); }
+      .callout,
+      .track-shell,
+      .pr-browser,
+      .experiment-grid { box-shadow: none; break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top"><strong>UPSTREAM / MILES</strong><span>contribution plan</span></a>
+    <nav class="site-nav" aria-label="Page links">
+      <a href="#summary">TL;DR</a>
+      <a href="#stack">PR plan</a>
+      <a href="#experiments">Experiments</a>
+      <a href="#execution">Execution</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" id="top">
+      <div class="hero-copy">
+        <p class="eyebrow">Upstream contribution plan · 28 July 2026</p>
+        <h1>Miles: fork-first validation, then focused upstream fixes</h1>
+        <p class="subtitle">先在 <a href="https://github.com/ChenyangWangjohn/miles-fork">ChenyangWangjohn/miles-fork</a>
+          上重建与验证，再把针对现有行为的修复分成可独立审核的 PR：三个独立 bug fix，
+          一个 external scorer 契约加固，以及一个保持官方算法语义的 Top-K 打分修复。</p>
+        <p class="byline">Target: <span class="mono">radixark/miles:main</span> ·
+          validation model pair: Qwen3 32B teacher / 8B student · official math example</p>
+      </div>
+
+      <div class="hero-plan" role="img" aria-label="Develop in fork, run controlled comparisons, then open focused upstream pull requests">
+        <div class="hero-stage">
+          <div class="stage-kicker">fork · isolated branches</div>
+          <div class="repo-mark" aria-hidden="true"><span></span></div>
+          <div class="stage-title">Re-implement on upstream tip</div>
+          <div class="stage-note">one topic per branch</div>
+        </div>
+        <div class="hero-arrow" aria-hidden="true"></div>
+        <div class="hero-stage">
+          <div class="stage-kicker">evidence · paired controls</div>
+          <div class="run-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="stage-title">Run official examples A/B</div>
+          <div class="stage-note">same env, teacher runtime, seed, data</div>
+        </div>
+        <div class="hero-arrow" aria-hidden="true"></div>
+        <div class="hero-stage">
+          <div class="stage-kicker">upstream · reviewable units</div>
+          <div class="pr-mark" aria-hidden="true"><span>F</span><span>I</span><span>X</span></div>
+          <div class="stage-title">Submit evidence-backed PRs</div>
+          <div class="stage-note">fixes and transport hardening</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="page-grid">
+      <nav class="toc" aria-label="Table of contents">
+        <p class="toc-title">Contents</p>
+        <ol>
+          <li><a href="#summary">1. TL;DR</a></li>
+          <li><a href="#stack">2. PR status</a></li>
+          <li><a href="#scorer">3. Scorer contract</a></li>
+          <li><a href="#topk">4. Top-k repair</a></li>
+          <li><a href="#candidates">5. Follow-up candidates</a></li>
+          <li><a href="#experiments">6. Experiments</a></li>
+          <li><a href="#execution">7. Execution protocol</a></li>
+          <li><a href="#gates">8. Merge gates</a></li>
+        </ol>
+      </nav>
+
+      <article class="article">
+        <h2 id="summary">1 · TL;DR</h2>
+        <div class="callout">
+          <p class="callout-title">Decision</p>
+          <ul>
+          <li><strong>Five focused Miles PRs.</strong> M4/M5/M6 are standalone bug fixes; O1 hardens the
+              existing external scorer; O2+O3 form one narrowly scoped Top-K repair stacked after O1.</li>
+          <li><strong>Fork before upstream.</strong> Every topic is first reviewed and tested against
+              <code>ChenyangWangjohn/miles-fork:main</code>. Only a green, rebased branch is proposed to
+              <code>radixark/miles:main</code>.</li>
+          <li><strong>Evidence is paired.</strong> The official Qwen3-32B teacher / Qwen3-8B student example
+              is the only cluster recipe: one O1 pair, then control/treatment pairs for the shipped
+              <code>only-student</code> and <code>only-teacher</code> strategies.</li>
+            <li><strong>Every commit credits both authors.</strong> The final paragraph of each commit message
+              includes <code>Co-authored-by: Xiuyu-Li &lt;xiuyu@berkeley.edu&gt;</code>.</li>
+          </ul>
+        </div>
+
+        <div class="callout blue">
+          <p class="callout-title">Scope for this contribution wave</p>
+          <p>This wave repairs behavior Miles already has: lock lifecycle, metric reduction,
+            gradient ownership on the shipped OPD advantage path, the external scorer transport, and the
+            response-wide Top-K candidate union. It introduces <strong>no trainer-side targets, no new loss,
+            and no algorithm-level change</strong>. Trainer/backend extensions, SGLang changes and multimodal
+            scoring are outside this wave.</p>
+        </div>
+
+        <div class="summary-grid" aria-label="Plan summary">
+          <div class="summary-item">
+            <div class="summary-value">5</div>
+            <div class="summary-label">focused Miles PRs</div>
+            <div class="summary-note">M4–M6 · O1 · one combined O2/O3 repair</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-value">3</div>
+            <div class="summary-label">controlled pairs</div>
+            <div class="summary-note">O1 · only-student · only-teacher</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-value">3</div>
+            <div class="summary-label">follow-up candidates</div>
+            <div class="summary-note">same repair method, other existing paths</div>
+          </div>
+        </div>
+
+        <div class="decision">
+          <strong>The guiding rule</strong>
+          <p>Fix the shipped paths without substituting our internal algorithm. The Top-K PR must preserve
+            candidate ownership, weighting, the detached per-position scalar and the sampled-token PPO
+            application. Its only new surface is a bounded implementation knob with an explicit legacy
+            fallback.</p>
+        </div>
+
+        <h2 id="stack">2 · PR status</h2>
+        <p>The three fixes are independent. O1 is also independently reviewable; O2+O3 stack on O1 because
+          each block uses O1's shared client, response-window payload, deadline and alignment contract.
+          The <code>dev</code> branch is the integration branch containing all five topic commits.</p>
+
+        <div class="track-shell" role="img" aria-label="Pull request tracks">
+          <p class="track-title">Review graph</p>
+          <div class="track">
+            <div class="track-label">Independent fixes</div>
+            <div class="track-line parallel">
+              <div class="track-node independent"><strong>Broadcast lock release</strong><small>base: fork main</small></div>
+              <div class="track-node independent"><strong>Metric extrema</strong><small>base: fork main</small></div>
+              <div class="track-node independent"><strong>OPD stop-gradient</strong><small>base: fork main</small></div>
+            </div>
+          </div>
+          <div class="track">
+            <div class="track-label">Existing scoring path</div>
+            <div class="track-line">
+              <div class="track-node opd"><strong>O1 · Scorer contract</strong><small>shared client + bounded response window</small></div>
+              <div class="track-node opd"><strong>O2/O3 · Top-K blocks</strong><small>position-local opposite-model scoring</small></div>
+              <div class="track-node integration"><strong>Three A/B pairs</strong><small>official example only</small></div>
+            </div>
+          </div>
+        </div>
+
+        <h3>2.1 Inspect each PR</h3>
+        <div class="pr-browser">
+          <div class="pr-tabs" role="tablist" aria-label="Pull request details">
+            <button class="pr-tab" id="pr-tab-lock" role="tab" aria-selected="true" aria-controls="pr-panel" data-pr="lock">M4<span>broadcast lifecycle</span></button>
+            <button class="pr-tab" id="pr-tab-extrema" role="tab" aria-selected="false" aria-controls="pr-panel" data-pr="extrema" tabindex="-1">M5<span>metric reduction</span></button>
+            <button class="pr-tab" id="pr-tab-stopgrad" role="tab" aria-selected="false" aria-controls="pr-panel" data-pr="stopgrad" tabindex="-1">M6<span>OPD stop-gradient</span></button>
+            <button class="pr-tab" id="pr-tab-scorer" role="tab" aria-selected="false" aria-controls="pr-panel" data-pr="scorer" tabindex="-1">O1<span>scorer contract</span></button>
+            <button class="pr-tab" id="pr-tab-topk" role="tab" aria-selected="false" aria-controls="pr-panel" data-pr="topk" tabindex="-1">O2/O3<span>Top-K blocks</span></button>
+          </div>
+          <section class="pr-detail" id="pr-panel" role="tabpanel" aria-labelledby="pr-tab-lock">
+            <div>
+              <h3 id="pr-title">[Bug Fix] Always release rollout-engine broadcast lock on failure</h3>
+              <p class="pr-subtitle" id="pr-subtitle">Branch · <span class="mono">upstream/broadcast-lock-release</span></p>
+              <dl class="detail-list">
+                <dt>Problem</dt><dd id="pr-problem">An exception inside weight broadcast leaves the rollout-engine lock held. The lock is polled, so the next weight sync spins forever: the job hangs instead of failing.</dd>
+                <dt>Change</dt><dd id="pr-change">Wrap the broadcast in try/finally so the lock is always returned; add regression tests that inject failures.</dd>
+                <dt>Non-goal</dt><dd id="pr-nongoal">No new broadcast protocol or engine placement policy.</dd>
+                <dt>Dependency</dt><dd id="pr-dependency">None. Branch directly from fork main.</dd>
+                <dt>Evidence</dt><dd id="pr-evidence">Four fast tests: success path, failure while issuing the broadcast, failure surfaced by engine refs, and a sync-after-failure retry.</dd>
+              </dl>
+            </div>
+            <aside class="acceptance">
+              <h4>Acceptance gate</h4>
+              <ul id="pr-gates">
+                <li>Injected failure cannot leave the lock held.</li>
+                <li>Original exception still propagates.</li>
+                <li>No behavior change on successful broadcast.</li>
+              </ul>
+            </aside>
+          </section>
+        </div>
+
+        <table aria-label="Branches and review order">
+          <thead>
+            <tr><th>Order</th><th>Branch on fork</th><th>Upstream title</th><th>Mode</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>M4</td><td class="mono">upstream/broadcast-lock-release</td><td>[Bug Fix] Always release rollout-engine broadcast lock on failure</td><td><span class="status ready">fork PR #2</span></td></tr>
+            <tr><td>M5</td><td class="mono">upstream/distributed-metric-extrema</td><td>[Bug Fix] Reduce distributed min/max metrics as extrema</td><td><span class="status ready">fork PR #3</span></td></tr>
+            <tr><td>M6</td><td class="mono">upstream/m6-opd-stop-gradient</td><td>[Bug Fix][OPD] Stop gradients through old-policy and teacher scores</td><td><span class="status ready">upstream #1832</span></td></tr>
+            <tr><td>O1</td><td class="mono">upstream/opd-scorer-contract</td><td>[OPD] Add a bounded external scorer contract</td><td><span class="status ready">fork PR #4</span></td></tr>
+            <tr><td>O2/O3</td><td class="mono">upstream/opd-topk-block-scoring</td><td>[OPD] Bound opposite-model Top-K scoring by response position</td><td><span class="status plan">dev + validation</span></td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="scorer">3 · Scorer contract: bound the existing transport</h2>
+        <p>The official OPD scorer constructs a new HTTP session for every request and asks the external
+          teacher server to return log-probs from the start of the sequence, although training consumes only
+          the response window. It also sends every sample's request at once, with no deadline, no retry
+          policy, and no check that returned scores line up with response tokens.</p>
+
+        <div class="mechanism">
+          <div class="mechanism-pane bad">
+            <h4>Before O1</h4>
+            <div class="tensor-flow">
+              <span class="tensor bad">new session</span><span class="inline-arrow">→</span>
+              <span class="tensor bad">prefix + response</span><span class="inline-arrow">→</span>
+              <span class="tensor bad">full logprob reply</span>
+            </div>
+            <p class="mechanism-note">Correct scores can be extracted, but transport setup and response volume
+              repeat per sample, and a shifted reply would be trained on silently.</p>
+          </div>
+          <div class="mechanism-arrow" aria-hidden="true"></div>
+          <div class="mechanism-pane good">
+            <h4>With the contract</h4>
+            <div class="tensor-flow">
+              <span class="tensor good">shared client</span><span class="inline-arrow">→</span>
+              <span class="tensor good">bounded RPC</span><span class="inline-arrow">→</span>
+              <span class="tensor good">response window</span>
+            </div>
+            <p class="mechanism-note">Same scoring semantics through the repository's shared HTTP client, with
+              an in-flight bound, one deadline shared across bounded retries, and a strict one-score-per-token
+              alignment check.</p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <p class="callout-title">Scope boundary</p>
+          <p>The scorer PR does not change what is scored or how scores are used. Its claim is narrow: an
+            external scoring request has a bounded transport lifecycle and returns exactly one finite score
+            per response token, or fails loudly with the sample's identity. The response-window request follows
+            the same convention the repository already uses for prefill scoring. A speedup is the experiment
+            hypothesis, not a statement baked into the PR.</p>
+        </div>
+
+        <h2 id="topk">4 · O2/O3: bound the shipped Top-K rescoring path</h2>
+        <p>The official example uses <code>--opd-log-prob-top-k 16</code>. In both native one-sided strategies,
+          one model owns a per-position candidate matrix <code>[T,K]</code> and the opposite model must supply
+          log-probs for those exact token IDs. The existing SGLang request accepts one arbitrary-ID list, so
+          Miles currently unions candidates across all <code>T</code> response positions into <code>U</code>
+          and receives <code>T×U</code> cells. A long response can make <code>U</code> large enough that JSON
+          construction, transfer and server-side materialization dominate or fail.</p>
+
+        <div class="mechanism">
+          <div class="mechanism-pane bad">
+            <h4>Legacy global union</h4>
+            <div class="tensor-flow">
+              <span class="tensor bad">native [T,K]</span><span class="inline-arrow">→</span>
+              <span class="tensor bad">global union U</span><span class="inline-arrow">→</span>
+              <span class="tensor bad">reply [T,U]</span>
+            </div>
+            <p class="mechanism-note">The objective consumes K values at each position, but the response carries
+              every ID in U at every position. Worst-case candidate cells grow toward T²K.</p>
+          </div>
+          <div class="mechanism-arrow" aria-hidden="true"></div>
+          <div class="mechanism-pane good">
+            <h4>O2/O3 behavior</h4>
+            <div class="tensor-flow">
+              <span class="tensor good">blocks [B,K]</span><span class="inline-arrow">→</span>
+              <span class="tensor good">local U<sub>b</sub></span><span class="inline-arrow">→</span>
+              <span class="tensor good">compact [T,K]</span>
+            </div>
+            <p class="mechanism-note">Each request covers at most B adjacent positions and only their local union,
+              where |U<sub>b</sub>|≤BK. Miles validates token alignment, gathers the K required values per row,
+              discards the Cartesian block reply, and preserves the original scalar computation.</p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <p class="callout-title">Two implementation items, one PR</p>
+          <p><strong>O2</strong> establishes candidate locality: validate each native Top-K row, divide response
+            positions into deterministic blocks, and cap each request's union at the block boundary.
+            <strong>O3</strong> wires the same scorer into both directions:
+            <code>only-student</code> sends student candidates to the teacher; <code>only-teacher</code> obtains
+            teacher native Top-K once, then sends those candidates to the student router. The other strategies
+            retain the legacy path in this PR.</p>
+        </div>
+
+        <table aria-label="Top-k implementation invariant">
+          <thead><tr><th>Property</th><th>Legacy</th><th>O2/O3</th></tr></thead>
+          <tbody>
+            <tr><td>Candidate owner</td><td>Student or teacher, selected by the existing strategy.</td><td>Unchanged.</td></tr>
+            <tr><td>Opposite-model score</td><td>One response-wide arbitrary-ID request.</td><td>Position blocks through the same SGLang endpoint.</td></tr>
+            <tr><td>Peak candidate cells</td><td><code>T×U</code>.</td><td>At most <code>B²K</code> per request; actual size is <code>B×|U_b|</code>.</td></tr>
+            <tr><td>Total candidate cells</td><td>Up to <code>T²K</code>.</td><td>At most <code>TBK</code>; fixed B is linear in T and K.</td></tr>
+            <tr><td>Training input</td><td>Detached <code>opd_reverse_kl[T]</code>.</td><td>Exactly the same field and formula.</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout blue">
+          <p class="callout-title">Explicit non-goals</p>
+          <p>No new Sample fields, trainer-side loss, backend collective or SGLang patch. The block-size flag
+            defaults to 32 and <code>0</code> restores the legacy global union for controlled comparison.
+            Smaller blocks reduce candidate replies but increase request count and repeated input-ID transfer;
+            sequential prefixes are expected to benefit from SGLang's existing prefix cache, which is an
+            experiment item rather than a correctness assumption.</p>
+        </div>
+
+        <h2 id="candidates">5 · Follow-up candidates</h2>
+        <p>Each candidate applies the same repair method to another existing path. None adds new
+          functionality; all are proposed only after the five scoped PRs land or receive review feedback.</p>
+
+        <table aria-label="Follow-up candidates">
+          <thead><tr><th>Candidate</th><th>Existing problem</th><th>Repair</th><th>Mode</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Reward-model transport</td>
+              <td>The remote reward-model client opens one HTTP session per request — the same antipattern the scorer PR removes.</td>
+              <td>Route through the shared HTTP client with the same bounded lifecycle.</td>
+              <td><span class="status plan">planned</span></td>
+            </tr>
+            <tr>
+              <td>Scoring configuration validation</td>
+              <td>Misconfigured external scoring (non-HTTP endpoint, missing reward hooks) fails deep inside rollout.</td>
+              <td>Validate the configuration at argument-parsing time and fail before rollout starts.</td>
+              <td><span class="status plan">planned</span></td>
+            </tr>
+            <tr>
+              <td>Fix sweep</td>
+              <td>Small corrections to existing behavior may be buried in larger internal changes.</td>
+              <td>Audit internal patches and extract anything that is a standalone fix to upstream code.</td>
+              <td><span class="status dep">investigate</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 id="experiments">6 · Controlled experiments</h2>
+        <p>The scorer-contract and top-k-repair PRs warrant cluster evidence; the three bug fixes are
+          fully covered by fast tests. All runs use the official math OPD example with a 32B teacher and 8B
+          student. The environment, teacher-serving runtime, teacher endpoint, data order, seed, parallel
+          layout and token budgets are frozen. The script remains
+          <code>examples/on_policy_distillation/run-qwen3-8B-opd.sh</code>; environment overrides select only
+          the named strategy and block-size treatment.</p>
+
+        <p><strong>Results for the B pair (<code>only-student</code>) are in:</strong>
+          <a href="topk-scoring-ab-evidence.html">Position-blocked top-k OPD scoring — A/B evidence</a>.
+          Summary: with short responses both arms complete 6/6 steps and position blocks cut per-step wall
+          clock from ~290s to ~108s (2.7×, teacher prefix-cache hit 6.7% → 97.5%); with the example's
+          default (thinking) template the legacy global-union arm does not finish step 0 within the
+          configured deadline — a single 8,883-token request exceeds 600s — while position blocks score
+          9–16k-token samples in the tested run (38,932 block requests, zero failures, two steps completed).
+          The corresponding <code>only-teacher</code> C0/C1 pair remains pending.</p>
+
+        <table aria-label="Primary A/B pairs">
+          <thead><tr><th>Run</th><th>Source</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>A0/A1 · O1</td><td><code>top_k=0</code>; main vs O1</td><td>Isolate shared transport, response-window, deadline and alignment behavior without Top-K traffic.</td></tr>
+            <tr><td>B0/B1 · student set</td><td><code>only-student</code>; block size 0 vs 32</td><td>Student rollout owns <code>[T,K]</code>; compare the legacy teacher global-union request with teacher position blocks.</td></tr>
+            <tr><td>C0/C1 · teacher set</td><td><code>only-teacher</code>; block size 0 vs 32</td><td>Teacher owns native <code>[T,K]</code>; compare the legacy student global-union request with student position blocks.</td></tr>
+          </tbody>
+        </table>
+
+        <div class="metric-strip" aria-label="Measurement set">
+          <div class="metric"><div class="metric-name">Correctness</div><div class="metric-value">0 drift</div><div class="metric-note">one teacher score per response token</div></div>
+          <div class="metric"><div class="metric-name">Reliability</div><div class="metric-value">fail loud</div><div class="metric-note">bounded retries; errors carry sample identity</div></div>
+          <div class="metric"><div class="metric-name">Performance</div><div class="metric-value">sec / step</div><div class="metric-note">end-to-end plus request count and server health</div></div>
+          <div class="metric"><div class="metric-name">Evidence</div><div class="metric-value">logs + config</div><div class="metric-note">frozen launch command and run references</div></div>
+        </div>
+
+        <table aria-label="Interpretation rules">
+          <thead><tr><th>Observation</th><th>Allowed conclusion</th><th>Not allowed</th></tr></thead>
+          <tbody>
+            <tr><td>A1 lowers end-to-end step time.</td><td>The bounded transport improves this fixed external-scoring setup.</td><td>The change speeds up every model or cluster.</td></tr>
+            <tr><td>A1 matches A0 scores on sampled positions.</td><td>The response-window request preserves scoring semantics.</td><td>Any claim about model quality.</td></tr>
+            <tr><td>B0 or C0 cannot complete a step.</td><td>The corresponding legacy global-union strategy is inoperable on this stack.</td><td>Every model, sequence length or Top-K value fails.</td></tr>
+            <tr><td>B1 and C1 complete with objective parity in fast tests.</td><td>Position blocks make both official one-sided strategies runnable under the tested layout.</td><td>Model quality improves without held-out evaluation.</td></tr>
+            <tr><td>Block size 32 is slower than expected.</td><td>The request-count / candidate-reply tradeoff needs tuning.</td><td>The correctness-preserving repair should be removed without trying another B.</td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="execution">7 · Execution protocol</h2>
+        <p>The fork is both the development remote and the first review target. A clean contribution checkout
+          prevents private history, scripts or experiment artifacts from leaking into upstream patches.</p>
+
+        <div class="timeline">
+          <section class="timeline-step">
+            <h4>1. Freeze the base</h4>
+            <p>Fetch <code>ChenyangWangjohn/miles-fork:main</code> and <code>radixark/miles:main</code>; verify the fork
+              base is current, then record the Miles SHA, environment versions, teacher-runtime identifier and the
+              official example revision.</p>
+          </section>
+          <section class="timeline-step">
+            <h4>2. Work in an isolated contribution checkout and environment</h4>
+            <p>Develop in a separate clone with its own cloned environment. Keep the same teacher-serving runtime
+              for every paired run.</p>
+          </section>
+          <section class="timeline-step">
+            <h4>3. Re-implement each topic on the upstream tip</h4>
+            <p>Adapt each fix to the current upstream contracts and HTTP utilities instead of transplanting
+              internal patches verbatim.</p>
+          </section>
+          <section class="timeline-step">
+            <h4>4. Run local and cluster gates</h4>
+            <p>Fast tests first, then lint and formatting, then the three official-example pairs. A baseline and
+              treatment differ only in source branch for O1, or
+              <code>OPD_TOP_K_SCORING_BLOCK_SIZE=0/32</code> for O2/O3.</p>
+          </section>
+          <section class="timeline-step">
+            <h4>5. Review in the fork</h4>
+            <p>Verify on a work branch, then cherry-pick the reviewed commit onto a clean branch from fork main and
+              open a PR into <code>ChenyangWangjohn/miles-fork:main</code> with commands, exact SHAs and known scope
+              limits.</p>
+          </section>
+          <section class="timeline-step">
+            <h4>6. Propose upstream</h4>
+            <p>Open the equivalent branch against <code>radixark/miles:main</code> with Motivation, What's in this PR,
+              Validation and Notes for reviewers. Do not combine unrelated fixes to reduce PR count.</p>
+          </section>
+        </div>
+
+        <h3>7.1 Commit authorship</h3>
+        <p>Each commit carries the co-author trailer in the commit message itself. It is not added later in a PR
+          comment, and it is distinct from <code>Signed-off-by</code>.</p>
+        <pre>git commit \
+  -m "[Bug Fix] Reduce distributed min/max metrics as extrema" \
+  -m "Co-authored-by: Xiuyu-Li &lt;xiuyu@berkeley.edu&gt;"</pre>
+
+        <h3>7.2 A/B reproducibility record</h3>
+        <table aria-label="Run manifest requirements">
+          <thead><tr><th>Field</th><th>Must be identical</th><th>Recorded output</th></tr></thead>
+          <tbody>
+            <tr><td>Source</td><td>Base Miles SHA; fixed external teacher runtime.</td><td><code>git rev-parse HEAD</code>, server/runtime identifier.</td></tr>
+            <tr><td>Models</td><td>Qwen3 32B teacher and Qwen3 8B student checkpoints.</td><td>Resolved model paths and config hashes.</td></tr>
+            <tr><td>Data</td><td>Dataset revision, prompt order, seed and sample count.</td><td>Manifest checksum and first prompt IDs.</td></tr>
+            <tr><td>Runtime</td><td>Nodes, GPUs, TP/PP/CP, token budgets and teacher-server arguments.</td><td>Resolved launch command and environment diff.</td></tr>
+            <tr><td>Training</td><td>Optimizer, batch sizes, coefficients and checkpoint policy.</td><td>Run config plus JSON summary.</td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="gates">8 · Definition of done</h2>
+        <table aria-label="Definition of done per pull request">
+          <thead><tr><th>PR</th><th>Required before fork PR is green</th><th>Required before upstream PR</th></tr></thead>
+          <tbody>
+            <tr><td>Broadcast lock</td><td>Failure-injection lock lifecycle tests.</td><td>Relevant rollout/broadcast fast suite and pre-commit.</td></tr>
+            <tr><td>Metric extrema</td><td>Reducer tests prove extrema are not averaged; names unchanged.</td><td>Metric call-site audit and existing logging tests.</td></tr>
+            <tr><td>OPD stop-gradient</td><td>Teacher and old-policy tensors receive no gradient; student logits do.</td><td>OPD fast tests and a short smoke run.</td></tr>
+            <tr><td>Scorer contract</td><td>Window/alignment/retry/deadline/in-flight tests; full and windowed replies extract identical scores.</td><td>A0/A1 official-example comparison with raw timings.</td></tr>
+            <tr><td>Top-k repair</td><td>Both one-sided strategies; three weighting modes; objective parity against the response-wide union; missing-ID and token-alignment failures.</td><td>B0/B1 and C0/C1 on the official Qwen3 example, including step completion and end-to-end timing.</td></tr>
+          </tbody>
+        </table>
+
+        <div class="decision">
+          <strong>Current status and next actions</strong>
+          <p>M4, M5, M6 and O1 are integrated into <code>dev</code>; O2/O3 are implemented there without a
+            trainer or SGLang change. Next: finish local gates, push <code>dev</code>, run A0/A1, B0/B1 and
+            C0/C1, then extract O2/O3 onto its clean O1-based topic branch for fork review.</p>
+        </div>
+
+        <footer>
+          Plan revision: 2026-07-28 · fork base:
+          <span class="mono">Miles-upstream 5b809d9d</span> ·
+          contribution fork:
+          <a href="https://github.com/ChenyangWangjohn/miles-fork">github.com/ChenyangWangjohn/miles-fork</a> ·
+          co-author format:
+          <a href="https://docs.github.com/en/pull-requests/how-tos/commit-changes/creating-a-commit-with-multiple-authors">GitHub documentation</a>.
+          Refresh all SHAs before opening the O2/O3 topic PR.
+        </footer>
+      </article>
+
+      <aside class="margin-rail" aria-label="Plan notes">
+        <div class="rail-block">
+          <div class="rail-label">Current fork base</div>
+          Miles<br><span class="mono">5b809d9d</span>
+        </div>
+        <div class="rail-block">
+          <div class="rail-label">A/B model pair</div>
+          32B teacher<br>8B student<br>math recipe
+        </div>
+        <div class="rail-block">
+          <div class="rail-label">Hard rule</div>
+          Fix what exists; add no new objectives, contracts or metric names.
+        </div>
+        <div class="rail-block">
+          <div class="rail-label">Authorship</div>
+          Every commit includes Xiuyu's co-author trailer.
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const prData = {
+        lock: {
+          title: "[Bug Fix] Always release rollout-engine broadcast lock on failure",
+          branch: "upstream/broadcast-lock-release",
+          problem: "An exception inside weight broadcast leaves the rollout-engine lock held. The lock is polled, so the next weight sync spins forever: the job hangs instead of failing.",
+          change: "Wrap the broadcast in try/finally so the lock is always returned; add regression tests that inject failures.",
+          nongoal: "No new broadcast protocol or engine placement policy.",
+          dependency: "None. Branch directly from fork main.",
+          evidence: "Four fast tests: success path, failure while issuing the broadcast, failure surfaced by engine refs, and a sync-after-failure retry.",
+          gates: [
+            "Injected failure cannot leave the lock held.",
+            "Original exception still propagates.",
+            "No behavior change on successful broadcast."
+          ]
+        },
+        extrema: {
+          title: "[Bug Fix] Reduce distributed min/max metrics as extrema",
+          branch: "upstream/distributed-metric-extrema",
+          problem: "Distributed logging averages rank-local minima and maxima, so the reported global range is mathematically wrong: the global maximum is under-reported and the minimum over-reported.",
+          change: "Reduce each key by an explicit reduction — mean by default, extrema for the existing min/max keys — while keeping every metric name unchanged.",
+          nongoal: "No new metric names, namespaces, or logging backend.",
+          dependency: "None. Branch directly from fork main.",
+          evidence: "Fast tests reproduce the old averaged values and verify the corrected global extrema, the mean default, and a clear error on cross-rank key mismatch.",
+          gates: [
+            "Global min equals the smallest rank-local value.",
+            "Global max equals the largest rank-local value.",
+            "Mean and sum reducers remain unchanged."
+          ]
+        },
+        stopgrad: {
+          title: "[Bug Fix][OPD] Stop gradients through old-policy and teacher scores",
+          branch: "upstream/m6-opd-stop-gradient",
+          problem: "OPD advantage construction should treat old-policy and teacher scores as fixed data; nothing enforces that contract, so a caller supplying a live tensor would silently backpropagate through the advantage coefficient.",
+          change: "Detach the fixed scoring inputs at the loss boundary and test gradient ownership explicitly.",
+          nongoal: "No change to the loss formula, coefficients, or the student current-policy gradient.",
+          dependency: "None. Branch directly from fork main.",
+          evidence: "Teacher and old-policy tensors receive no gradient, current student logits keep theirs, and forward loss values are unchanged.",
+          gates: [
+            "Teacher and old-policy tensors have no gradient.",
+            "Current student logits remain differentiable.",
+            "Forward value matches the pre-fix formula."
+          ]
+        },
+        scorer: {
+          title: "[OPD] Add a bounded external scorer contract",
+          branch: "upstream/opd-scorer-contract",
+          problem: "The existing scorer opens one HTTP session per request, requests logprobs from position zero, sends every sample at once with no deadline or retry policy, and never checks that returned scores align with response tokens.",
+          change: "Route requests through the repository's shared HTTP client; request only the response window (the existing prefill-scoring convention); bound in-flight requests; share one deadline across bounded retries; validate one finite score per response token.",
+          nongoal: "No change to what is scored or how scores are used; no new algorithm surface. Performance claims are left to the paired runs.",
+          dependency: "Independent of the other fixes.",
+          evidence: "Twenty fast tests, including full-versus-window reply equivalence, alignment rejections, retry and deadline behavior, and the in-flight bound.",
+          gates: [
+            "Exactly T teacher scores for T response tokens.",
+            "Retries are bounded; terminal failures carry the sample's identity.",
+            "Existing scoring configurations behave identically."
+          ]
+        },
+        topk: {
+          title: "[OPD] Bound opposite-model Top-K scoring by response position",
+          branch: "upstream/opd-topk-block-scoring",
+          problem: "The shipped top-k configuration merges every position's candidate ids into a response-wide union and asks the other server to score all of them at every position. Long responses can turn the required T×K values into a T×U response large enough to make the documented recipe impractical.",
+          change: "O2 partitions native [T,K] candidate rows into bounded response-position blocks. O3 uses the same block scorer for student candidates at the teacher and teacher candidates at the student, then compacts every reply back to K values per position before running the unchanged scalar formula.",
+          nongoal: "No new Sample field, trainer-side loss, backend change or SGLang patch. Intersection, union and xor retain the legacy path.",
+          dependency: "Stacks on O1 so every block uses the shared client, response-window payload, bounded deadline and token-alignment contract.",
+          evidence: "Fast objective parity against the response-wide union for both one-sided strategies and all weighting modes; official-example control/treatment pairs for only-student and only-teacher.",
+          gates: [
+            "Peak candidate cells are bounded by B × |U_b|, at most B²K.",
+            "Objective value matches the pre-repair formula on identical inputs.",
+            "Both official one-sided strategies complete the configured run."
+          ]
+        }
+      };
+
+      const prTabs = Array.from(document.querySelectorAll(".pr-tab"));
+      const panel = document.getElementById("pr-panel");
+      const fields = {
+        title: document.getElementById("pr-title"),
+        subtitle: document.getElementById("pr-subtitle"),
+        problem: document.getElementById("pr-problem"),
+        change: document.getElementById("pr-change"),
+        nongoal: document.getElementById("pr-nongoal"),
+        dependency: document.getElementById("pr-dependency"),
+        evidence: document.getElementById("pr-evidence"),
+        gates: document.getElementById("pr-gates")
+      };
+
+      function selectPr(key, focus = false) {
+        const data = prData[key];
+        const tab = prTabs.find((item) => item.dataset.pr === key);
+        if (!data || !tab) return;
+        prTabs.forEach((item) => {
+          const selected = item === tab;
+          item.setAttribute("aria-selected", String(selected));
+          item.tabIndex = selected ? 0 : -1;
+        });
+        panel.setAttribute("aria-labelledby", tab.id);
+        fields.title.textContent = data.title;
+        const branchName = document.createElement("span");
+        branchName.className = "mono";
+        branchName.textContent = data.branch;
+        fields.subtitle.replaceChildren(document.createTextNode("Branch · "), branchName);
+        fields.problem.textContent = data.problem;
+        fields.change.textContent = data.change;
+        fields.nongoal.textContent = data.nongoal;
+        fields.dependency.textContent = data.dependency;
+        fields.evidence.textContent = data.evidence;
+        fields.gates.replaceChildren(...data.gates.map((gate) => {
+          const item = document.createElement("li");
+          item.textContent = gate;
+          return item;
+        }));
+        if (focus) tab.focus();
+      }
+
+      prTabs.forEach((tab, index) => {
+        tab.addEventListener("click", () => selectPr(tab.dataset.pr));
+        tab.addEventListener("keydown", (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          let next = index;
+          if (event.key === "ArrowLeft") next = (index - 1 + prTabs.length) % prTabs.length;
+          if (event.key === "ArrowRight") next = (index + 1) % prTabs.length;
+          if (event.key === "Home") next = 0;
+          if (event.key === "End") next = prTabs.length - 1;
+          selectPr(prTabs[next].dataset.pr, true);
+        });
+      });
+
+      const tocLinks = Array.from(document.querySelectorAll(".toc a"));
+      const sections = tocLinks
+        .map((link) => document.querySelector(link.getAttribute("href")))
+        .filter(Boolean);
+      if ("IntersectionObserver" in window) {
+        const observer = new IntersectionObserver((entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+          if (!visible.length) return;
+          const id = `#${visible[0].target.id}`;
+          tocLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === id));
+        }, { rootMargin: "-15% 0px -72% 0px", threshold: 0 });
+        sections.forEach((section) => observer.observe(section));
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Position-blocked top-k OPD scoring — A/B evidence</title>
+<style>
+  body { max-width: 900px; margin: 2rem auto; padding: 0 1rem; font: 15px/1.55 system-ui, sans-serif; }
+  h1 { font-size: 1.5rem; } h2 { font-size: 1.2rem; margin-top: 2rem; }
+  table { border-collapse: collapse; margin: .8rem 0; width: 100%; }
+  th, td { border: 1px solid #8884; padding: .4rem .6rem; text-align: left; }
+  th { background: #8881; }
+  code, pre { background: #8882; border-radius: 4px; padding: .1rem .3rem; }
+  pre { padding: .6rem; overflow-x: auto; }
+  .ok { color: #2e8b57; font-weight: 600; } .bad { color: #c9302c; font-weight: 600; }
+  .note { opacity: .75; font-size: .92em; }
+</style>
+</head>
+<body>
+
+<h1>Position-blocked top-k OPD scoring — A/B evidence</h1>
+<p class="note">Official example: <code>examples/on_policy_distillation/run-qwen3-8B-opd.sh</code>
+(Qwen3-32B teacher / Qwen3-8B student, DAPO-math-17k, top-k 16, strategy <code>only-student</code>,
+weight mode <code>student_p</code>). Both arms run identical code; the only toggle is
+<code>--opd-top-k-scoring-block-size</code> (0 = legacy response-wide union, 32 = position blocks).
+Runs used the same layout on an NVIDIA GPU cluster.</p>
+
+<h2>Result matrix</h2>
+<table>
+<tr><th></th><th>legacy (block=0)</th><th>blocked (block=32)</th></tr>
+<tr><td><b>Short responses</b><br><span class="note">enable_thinking=false, mean 1.5–2.0k tok</span></td>
+    <td><span class="ok">completes 6/6</span><br>~289s / step</td>
+    <td><span class="ok">completes 6/6</span><br>~108s / step — <b>2.7× faster</b></td></tr>
+<tr><td><b>Long responses</b><br><span class="note">default template (thinking), up to 16k tok</span></td>
+    <td><span class="bad">fails in step 0</span><br>scoring request exceeds 600s deadline</td>
+    <td><span class="ok">steps complete normally</span><br>~638s / step</td></tr>
+</table>
+
+<h2>1 · Short responses: comparable base prefill, 2.7× per-step speedup</h2>
+<svg viewBox="0 0 640 82" style="max-width:100%;font:12px sans-serif"><text x="0" y="22" fill="currentColor">legacy (6 steps)</text><rect x="160" y="5" width="410" height="26" rx="4" fill="#d9534f"/><text x="575" y="22" fill="currentColor">289s / step</text><text x="0" y="58" fill="currentColor">blocked (6 steps)</text><rect x="160" y="41" width="153" height="26" rx="4" fill="#5cb85c"/><text x="318" y="58" fill="currentColor">108s / step</text></svg>
+<table>
+<tr><th>metric</th><th>legacy</th><th>blocked</th></tr>
+<tr><td>outcome</td><td>6/6 steps</td><td>6/6 steps</td></tr>
+<tr><td>per-step wall clock</td><td>[279, 298, 276, 332, 262] (mean 289s)</td>
+    <td>[107, 107, 101, 119, 107] (mean 108s)</td></tr>
+<tr><td>teacher scoring requests</td><td>384 (64 per round, up to 8 in flight)</td>
+    <td>19,900 (small blocks, up to 8 in flight)</td></tr>
+<tr><td>teacher prefix-cache hit</td><td>6.7%</td><td>97.5%</td></tr>
+<tr><td>teacher new prefill tokens</td><td>659,033</td><td>662,430</td></tr>
+<tr><td>mean response length</td><td>1.5–2.0k</td><td>1.5–2.0k</td></tr>
+</table>
+<p>Both arms make the teacher prefill nearly the same number of <em>new</em>
+tokens (~660k), so their base-model prefill work is comparable. Candidate
+projection, response serialization and request scheduling are not identical:
+the legacy arm materializes one large candidate matrix per sample, while the
+blocked arm issues many bounded replies and reuses the growing prefix through
+the radix cache (97.5% hit). Under the configured eight-request in-flight bound,
+that trade reduces the observed scoring tail and step time.</p>
+
+<h2>2 · Long responses: legacy exceeds the configured step deadline</h2>
+<p>With the default chat template the student writes thinking traces up to 16k
+tokens. The legacy path scores each sample with one request whose reply
+materializes <em>positions × response-wide candidate-union</em> log-probs. Per-request
+latency escalates with response length until one request exceeds the experiment's
+configured 600s deadline:</p>
+<svg viewBox="0 0 640 180" style="max-width:100%;font:11px sans-serif"><line x1="34" y1="146" x2="630" y2="146" stroke="currentColor" opacity="0.4"/><line x1="34" y1="10" x2="34" y2="146" stroke="currentColor" opacity="0.4"/><text x="2" y="16" fill="currentColor">66s</text><text x="34" y="172" fill="currentColor">request # (completion order)</text><path d="M34.0,142.0 L49.7,144.0 L65.4,142.0 L81.1,108.0 L96.7,138.0 L112.4,130.0 L128.1,144.0 L143.8,136.0 L159.5,132.0 L175.2,134.0 L190.8,134.0 L206.5,94.0 L222.2,116.0 L237.9,122.0 L253.6,120.0 L269.3,124.0 L284.9,98.0 L300.6,118.0 L316.3,116.0 L332.0,96.0 L347.7,114.0 L363.4,120.0 L379.1,120.0 L394.7,114.0 L410.4,114.0 L426.1,110.0 L441.8,106.0 L457.5,112.0 L473.2,14.0 L488.8,108.0 L504.5,112.0 L520.2,116.0 L535.9,96.0 L551.6,92.0 L567.3,96.0 L582.9,90.0 L598.6,96.0 L614.3,98.0 L630.0,74.0" fill="none" stroke="#d9534f" stroke-width="2"/><circle cx="34.0" cy="142.0" r="2.4" fill="#d9534f"/><circle cx="49.7" cy="144.0" r="2.4" fill="#d9534f"/><circle cx="65.4" cy="142.0" r="2.4" fill="#d9534f"/><circle cx="81.1" cy="108.0" r="2.4" fill="#d9534f"/><circle cx="96.7" cy="138.0" r="2.4" fill="#d9534f"/><circle cx="112.4" cy="130.0" r="2.4" fill="#d9534f"/><circle cx="128.1" cy="144.0" r="2.4" fill="#d9534f"/><circle cx="143.8" cy="136.0" r="2.4" fill="#d9534f"/><circle cx="159.5" cy="132.0" r="2.4" fill="#d9534f"/><circle cx="175.2" cy="134.0" r="2.4" fill="#d9534f"/><circle cx="190.8" cy="134.0" r="2.4" fill="#d9534f"/><circle cx="206.5" cy="94.0" r="2.4" fill="#d9534f"/><circle cx="222.2" cy="116.0" r="2.4" fill="#d9534f"/><circle cx="237.9" cy="122.0" r="2.4" fill="#d9534f"/><circle cx="253.6" cy="120.0" r="2.4" fill="#d9534f"/><circle cx="269.3" cy="124.0" r="2.4" fill="#d9534f"/><circle cx="284.9" cy="98.0" r="2.4" fill="#d9534f"/><circle cx="300.6" cy="118.0" r="2.4" fill="#d9534f"/><circle cx="316.3" cy="116.0" r="2.4" fill="#d9534f"/><circle cx="332.0" cy="96.0" r="2.4" fill="#d9534f"/><circle cx="347.7" cy="114.0" r="2.4" fill="#d9534f"/><circle cx="363.4" cy="120.0" r="2.4" fill="#d9534f"/><circle cx="379.1" cy="120.0" r="2.4" fill="#d9534f"/><circle cx="394.7" cy="114.0" r="2.4" fill="#d9534f"/><circle cx="410.4" cy="114.0" r="2.4" fill="#d9534f"/><circle cx="426.1" cy="110.0" r="2.4" fill="#d9534f"/><circle cx="441.8" cy="106.0" r="2.4" fill="#d9534f"/><circle cx="457.5" cy="112.0" r="2.4" fill="#d9534f"/><circle cx="473.2" cy="14.0" r="2.4" fill="#d9534f"/><circle cx="488.8" cy="108.0" r="2.4" fill="#d9534f"/><circle cx="504.5" cy="112.0" r="2.4" fill="#d9534f"/><circle cx="520.2" cy="116.0" r="2.4" fill="#d9534f"/><circle cx="535.9" cy="96.0" r="2.4" fill="#d9534f"/><circle cx="551.6" cy="92.0" r="2.4" fill="#d9534f"/><circle cx="567.3" cy="96.0" r="2.4" fill="#d9534f"/><circle cx="582.9" cy="90.0" r="2.4" fill="#d9534f"/><circle cx="598.6" cy="96.0" r="2.4" fill="#d9534f"/><circle cx="614.3" cy="98.0" r="2.4" fill="#d9534f"/><circle cx="630.0" cy="74.0" r="2.4" fill="#d9534f"/></svg>
+<p class="note">Completion gaps of the 40 requests the legacy run managed to finish,
+in completion order (shortest samples finish generation first, so request order
+correlates with response length): 1–2s → 15–30s → 36s → then a ~8.9k-token sample
+does not complete before the 600s request deadline.</p>
+<pre>RuntimeError: OPD scoring request to &lt;teacher-endpoint&gt; failed after 1 attempt(s):
+TimeoutError() (target=teacher, timeout=600.0s, input_tokens=8883)</pre>
+<p>The teacher server itself stays healthy, but this request does not complete
+within the configured 600s deadline. That establishes that the legacy arm is
+inoperable under this tested timeout and layout; it does not establish a
+universal latency bound. 40 of 64 samples were scored before the timed-out tail
+caused step 0 to fail.</p>
+
+<h2>3 · Long responses with blocked scoring</h2>
+<p>The blocked arm scores the same length class (15–16k-token samples) in
+32-position blocks without incident: 2 steps completed, per-step wall clock below.</p>
+<table><tr><th>step transition</th><th>wall clock</th></tr><tr><td>step 0 → 1</td><td>638s</td></tr></table>
+<table>
+<tr><th>metric</th><th>legacy</th><th>blocked</th></tr>
+<tr><td>outcome</td><td class="bad">RuntimeError in step 0</td><td class="ok">steps complete</td></tr>
+<tr><td>teacher requests completed</td><td>40 of 64 samples, then stalls</td>
+    <td>38,932+ blocks, no failures</td></tr>
+<tr><td>teacher prefix-cache hit</td><td>1.6%</td><td>92.9%</td></tr>
+</table>
+
+<h2>Why the asymmetry: candidate-response mechanics</h2>
+<p>For a response of <code>T</code> positions with top-k <code>K</code>:</p>
+<ul>
+<li><b>legacy:</b> one request, candidate union <code>U ≈ unique(T×K)</code> ids, reply
+carries <code>T × U</code> log-probs — quadratic-ish in <code>T</code>. At T≈1.5k this is tolerable;
+at T≈9k+ a single reply is hundreds of millions of values.</li>
+<li><b>blocked:</b> <code>T/B</code> requests; block <code>b</code> carries the union of its own
+<code>B</code> rows only (<code>U_b ≤ B×K</code>), so candidate-response cells are bounded by
+<code>T×B×K</code> for fixed <code>B</code>. Consecutive blocks share the sequence prefix,
+so the teacher's radix cache eliminates most repeated model prefill (~98% hit
+measured).</li>
+</ul>
+<p>This does not make the entire HTTP exchange linear. Every block still sends
+the prompt plus a growing response prefix; total request input IDs are roughly
+<code>(T/B)×P + T²/(2B)</code>. Prefix caching removes most repeated GPU prefill,
+not request-body transfer or scheduler overhead. The block size therefore trades
+candidate-response size against request count and repeated prefix transfer.</p>
+<p>For a fixed scorer snapshot, each position retains the same candidates and
+objective values; unit parity tests cover all three weight modes. The cluster
+runs establish end-to-end behavior and timing, not bit-exact score parity.</p>
+
+<h2>4 · Teacher candidate set (only-teacher)</h2>
+<p>The runs above cover <code>only-student</code>: the fixed teacher scores
+position-blocked student candidates. The <code>only-teacher</code> pair uses
+teacher-native candidates and asks the student rollout router to score them:</p>
+<pre>OPD_TOP_K_STRATEGY=only-teacher OPD_TOP_K_SCORING_BLOCK_SIZE=0 \
+  bash examples/on_policy_distillation/run-qwen3-8B-opd.sh
+
+OPD_TOP_K_STRATEGY=only-teacher OPD_TOP_K_SCORING_BLOCK_SIZE=32 \
+  bash examples/on_policy_distillation/run-qwen3-8B-opd.sh</pre>
+<p>All four cells ran the synchronous official example, so student weights are
+stable within each rollout round. Fully asynchronous <code>only-teacher</code>
+additionally needs a student weight-version consistency contract across block
+requests.</p>
+
+<h3>4a · Engine-layer precondition: arbitrary-ID scoring on busy engines</h3>
+<p>The first attempt crashed all four cells identically — both arms, both
+workloads — about 30 seconds after generation started: the first rescore
+request that reached a rollout engine killed its scheduler process with
+<code>AttributeError: 'list' object has no attribute 'tolist'</code>
+(<code>batch_result_processor.py</code>), and the router returned 503 once no
+workers remained. <code>LogitsProcessorOutput.next_token_token_ids_logprobs_val</code>
+is declared to hold host lists as well as tensors (delayed-copy prefill-only
+requests), and the serving stack's D2H relay already guards each entry with
+<code>torch.is_tensor</code>; two normalization sites called
+<code>v.tolist()</code> unconditionally. A dedicated scoring server never hits
+that path — it has no concurrent decode traffic — which is why the
+<code>only-student</code> cells were unaffected. The guard fix plus regression
+tests were applied to the serving stack before collecting the results below.
+This failure layer is independent of block size:
+it gates the strategy itself, not the transport.</p>
+
+<h3>4b · Results on the patched engine</h3>
+<table>
+<tr><th></th><th>legacy (block=0)</th><th>blocked (block=32)</th></tr>
+<tr><td><b>Short responses</b></td>
+    <td><span class="ok">completes 6/6</span><br>~285s / step (266/270/289/344/257)</td>
+    <td><span class="ok">completes 6/6</span><br>~93s / step (98/94/89/100/85) — <b>3.1× faster</b></td></tr>
+<tr><td><b>Long responses (thinking)</b></td>
+    <td><span class="bad">fails in step 0</span><br>a 16,552-token sample's rescore burned its
+        entire 600s deadline queued behind earlier union requests
+        (<code>failed after 0 attempt(s)</code>); zero engine exceptions</td>
+    <td><span class="ok">2/2 steps, exit 0</span><br>~492s / step at mean ~9.3k-token
+        responses; zero engine exceptions</td></tr>
+</table>
+<p>With the engine bug fixed, the long-response failure cleanly isolates the
+transport problem: rollout engines serve rescore requests between decode
+batches, the response-wide union's demand outpaces that service rate, and the
+queue consumes whole deadlines before requests are even issued. The blocked
+arm's bounded requests interleave with decode without building a backlog.</p>
+
+</body>
+</html>
