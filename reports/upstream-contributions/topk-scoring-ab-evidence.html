@@ -160,5 +160,19 @@ batches, the response-wide union's demand outpaces that service rate, and the
 queue consumes whole deadlines before requests are even issued. The blocked
 arm's bounded requests interleave with decode without building a backlog.</p>
 
+<h2>5 · Longer reruns reproduce the speedup</h2>
+<p>Extending both short pairs to 30 training steps reproduces the per-step
+speedup at scale, and confirms both arms stay numerically equivalent over the
+run:</p>
+<table>
+<tr><th>Short, 30 steps</th><th>legacy (block=0)</th><th>blocked (block=32)</th><th>speedup</th></tr>
+<tr><td>only-student candidate set</td><td>308s / step</td><td>120s / step</td><td><b>2.6×</b></td></tr>
+<tr><td>only-teacher candidate set</td><td>167 min scoring span (11 req/min)</td><td>53 min (36 req/min)</td><td><b>3.2×</b></td></tr>
+</table>
+<p>The two arms issue the same number of teacher requests and the teacher
+performs the same base-model prefill work; the gap is entirely the legacy
+response-wide union's per-request cost and serialized scoring tail, which the
+position blocks remove.</p>
+
 </body>
 </html>
