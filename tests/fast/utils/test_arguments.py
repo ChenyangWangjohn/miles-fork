@@ -1516,3 +1516,25 @@ class TestSessionServerArguments:
 
         assert args.session_server_workers == 32
         assert args.session_server_port is None
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        ({"train_backend": "fsdp"}, "enabled Megatron optimizer"),
+        ({"debug_disable_optimizer": True}, "enabled Megatron optimizer"),
+        ({"chunked_optimizer_state_offload": False}, "chunked optimizer-state offload"),
+        ({"optimizer_state_offload_fraction": 0.0}, "chunked optimizer-state offload"),
+        ({"multi_lora": True}, "per-adapter updates"),
+    ],
+)
+def test_validate_optimizer_state_prefetch(overrides, reason):
+    parser = argparse.ArgumentParser()
+    get_miles_extra_args_provider()(parser)
+    args = parser.parse_args(["--prefetch-optimizer-state-at-grad-finalize", *REQUIRED_ARGS])
+    args.chunked_optimizer_state_offload = True
+    args.optimizer_state_offload_fraction = 1.0
+    for name, value in overrides.items():
+        setattr(args, name, value)
+    with pytest.raises(ValueError, match=reason):
+        miles_validate_args(args)

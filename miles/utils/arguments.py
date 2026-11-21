@@ -238,6 +238,15 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--prefetch-optimizer-state-at-grad-finalize",
+                action="store_true",
+                help=(
+                    "Start Megatron's chunked optimizer-state restore during gradient finalization. "
+                    "Overlaps the next update's first state chunk and any offloaded master weights "
+                    "with the final gradient reductions. Restored tensors occupy GPU memory earlier."
+                ),
+            )
+            parser.add_argument(
                 "--stream-optimizer-state-moment-dtype",
                 type=str,
                 default="fp32",
@@ -2925,6 +2934,19 @@ def miles_validate_args(args):
             if hasattr(args, k):
                 logger.info(f"Warning: Argument {k} is already set to {getattr(args, k)}, will override with {v}.")
             setattr(args, k, v)
+
+    if getattr(args, "prefetch_optimizer_state_at_grad_finalize", False):
+        if args.train_backend != "megatron" or args.debug_disable_optimizer:
+            raise ValueError("--prefetch-optimizer-state-at-grad-finalize requires an enabled Megatron optimizer")
+        chunked = getattr(args, "chunked_optimizer_state_offload", False) or getattr(
+            args, "offload_optimizer_states", False
+        )
+        if not chunked or getattr(args, "optimizer_state_offload_fraction", 0.0) <= 0.0:
+            raise ValueError("--prefetch-optimizer-state-at-grad-finalize requires chunked optimizer-state offload")
+        if args.multi_lora:
+            raise ValueError(
+                "--prefetch-optimizer-state-at-grad-finalize does not support multi-LoRA's per-adapter updates"
+            )
 
     validate_dashboard_args(args)
 

@@ -120,3 +120,50 @@ class TestTrainOneStepStructuredLog:
             )
 
         assert "train op=train_step rollout=7 step=3 attempt=2 outcome=NORMAL valid_step=true" in caplog.messages
+
+
+class TestOptimizerStatePrefetch:
+    @pytest.mark.parametrize("enabled", [False, True])
+    def test_train_installs_prefetch_before_gradient_reductions(self, enabled, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        from miles.backends.megatron_utils import lora_utils
+        from miles.backends.megatron_utils import model as model_module
+
+        calls = []
+        args = Namespace(
+            debug_disable_optimizer=False,
+            overlap_param_gather=False,
+            use_distributed_optimizer=False,
+            reset_optimizer_states=False,
+            manual_gc=False,
+            enable_mtp_training=False,
+        )
+        if enabled:
+            args.prefetch_optimizer_state_at_grad_finalize = True
+        config = SimpleNamespace()
+        optimizer = SimpleNamespace(scale_loss=lambda loss: loss)
+        # Also exercise compatibility with old optimizer builds when the option is off.
+        if enabled:
+            optimizer.prefetch_optimizer_state_for_gradient_finalization = lambda: calls.append("prefetch")
+        model = [Mock()]
+        monkeypatch.setattr(model_module, "get_args", lambda: args)
+        monkeypatch.setattr(model_module, "get_parallel_state", lambda: FakeParallelState())
+        monkeypatch.setattr(model_module, "get_model_config", lambda chunk: config)
+        monkeypatch.setattr(model_module, "is_first_replica_megatron_main_rank", lambda: False)
+        monkeypatch.setattr(model_module.torch.cuda, "current_device", lambda: 0)
+        monkeypatch.setattr(model_module.torch.cuda, "mem_get_info", lambda device: (4, 100))
+        monkeypatch.setattr(model_module, "clear_memory", lambda: calls.append("clear"))
+        monkeypatch.setattr(lora_utils, "reduce_marked_lora_grads", lambda chunks: calls.append("lora"))
+        monkeypatch.setattr(model_module, "finalize_model_grads", lambda chunks, num_tokens: calls.append(num_tokens))
+
+        def run_step(*args, **kwargs):
+            config.finalize_model_grads_func(model, num_tokens=42)
+            return {}, 0.0, model_module.TrainStepOutcome.NORMAL
+
+        monkeypatch.setattr(model_module, "train_one_step", run_step)
+        for rollout_id in range(2):
+            model_module.train(rollout_id, model, optimizer, None, [], [1], [1], None, 0)
+        per_step = ["clear", "prefetch", "lora", 42] if enabled else ["clear", "lora", 42]
+        assert calls == per_step * 2

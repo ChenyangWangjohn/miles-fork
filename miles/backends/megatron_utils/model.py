@@ -670,7 +670,7 @@ def train_one_step(
     return {}, grad_norm, outcome
 
 
-def finalize_model_grads_with_empty_cache(*args, **kwargs):
+def finalize_model_grads_with_empty_cache(*args, prefetch_optimizer_state: Callable[[], None] | None = None, **kwargs):
     # TODO: this is an ad-hoc method and we should figure out why the oom happens in the first place.
     device = torch.cuda.current_device()
     free, total = torch.cuda.mem_get_info(device)
@@ -678,6 +678,8 @@ def finalize_model_grads_with_empty_cache(*args, **kwargs):
         clear_memory()
     from .lora_utils import reduce_marked_lora_grads
 
+    if prefetch_optimizer_state is not None:
+        prefetch_optimizer_state()
     reduce_marked_lora_grads(args[0])
     return finalize_model_grads(*args, **kwargs)
 
@@ -745,6 +747,16 @@ def train(
         if len(model) == 1:
             config.param_sync_func = config.param_sync_func[0]
     config.finalize_model_grads_func = finalize_model_grads_with_empty_cache
+    if getattr(args, "prefetch_optimizer_state_at_grad_finalize", False) and not disable_optimizer:
+        prefetch = getattr(optimizer, "prefetch_optimizer_state_for_gradient_finalization", None)
+        if not callable(prefetch):
+            raise RuntimeError(
+                "--prefetch-optimizer-state-at-grad-finalize requires a Megatron optimizer "
+                "with prefetch_optimizer_state_for_gradient_finalization()"
+            )
+        config.finalize_model_grads_func = partial(
+            finalize_model_grads_with_empty_cache, prefetch_optimizer_state=prefetch
+        )
 
     pre_hook_enabled = False
 
