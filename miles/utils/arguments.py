@@ -223,6 +223,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--optimizer-state-numa",
+                choices=["bind", "report"],
+                default=None,
+                help=(
+                    "Bind pinned buffers of Megatron's chunked host optimizer offload to the GPU's "
+                    "NUMA node, or only report their placement. Linux/CUDA with libnuma; the default "
+                    "keeps the existing allocator."
+                ),
+            )
+            parser.add_argument(
                 "--stream-optimizer-state-to-disk",
                 action="store_true",
                 help=(
@@ -3427,6 +3437,17 @@ def miles_validate_args(args):
         args.disable_param_buffers_cpu_backup = True
 
     _validate_rematerialize_param_from_master_weight(args)
+
+    if getattr(args, "optimizer_state_numa", None) is not None and (
+        args.train_backend != "megatron"
+        or args.debug_disable_optimizer
+        or not (
+            getattr(args, "chunked_optimizer_state_offload", False) or getattr(args, "offload_optimizer_states", False)
+        )
+        or args.optimizer_state_offload_fraction <= 0
+        or args.stream_optimizer_state_to_disk
+    ):
+        raise ValueError("--optimizer-state-numa requires Megatron chunked optimizer-state offload to host memory")
 
     if (args.offload_train_target == "disk" or args.stream_optimizer_state_to_disk) and (
         args.offload_train_disk_dir is None

@@ -432,6 +432,35 @@ class TestCustomConfigAppliedBeforeDerivedArgs:
         assert args.eval_prompt_data == ["aime", "/data/aime.jsonl"]
 
 
+def test_missing_optimizer_numa_option_preserves_programmatic_namespaces():
+    parser = argparse.ArgumentParser()
+    get_miles_extra_args_provider()(parser)
+    args = parser.parse_args(["--num-rollout", "1", *REQUIRED_ARGS])
+    assert args.optimizer_state_numa is None
+    del args.optimizer_state_numa
+    miles_validate_args(args)
+
+
+@pytest.mark.parametrize(
+    ("options", "chunked", "fraction"),
+    [
+        ([], False, 1),
+        ([], True, 0),
+        (["--debug-disable-optimizer"], True, 1),
+        (["--stream-optimizer-state-to-disk"], True, 1),
+    ],
+)
+def test_optimizer_numa_rejects_runs_without_chunked_host_optimizer(options, chunked, fraction):
+    parser = argparse.ArgumentParser()
+    get_miles_extra_args_provider()(parser)
+    args = parser.parse_args(["--optimizer-state-numa", "bind", "--num-rollout", "1", *REQUIRED_ARGS, *options])
+    args.chunked_optimizer_state_offload = chunked
+    args.offload_optimizer_states = False
+    args.optimizer_state_offload_fraction = fraction
+    with pytest.raises(ValueError, match="chunked optimizer-state offload to host memory"):
+        miles_validate_args(args)
+
+
 def test_stream_optimizer_state_to_disk_rejects_fault_tolerant_training():
     """Deriving indep_dp after the disk-stream asserts would have let an unsupported pair through."""
     parser = argparse.ArgumentParser()

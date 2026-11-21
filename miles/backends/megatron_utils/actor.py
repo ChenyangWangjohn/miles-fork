@@ -13,6 +13,7 @@ import torch.distributed as dist
 from torch_memory_saver import torch_memory_saver
 
 from miles.backends.megatron_utils.ft.types import TrainStepOutput
+from miles.backends.megatron_utils.optimizer_state_numa import install_optimizer_state_numa
 from miles.backends.megatron_utils.rematerialize_utils import build_main_cast_context
 from miles.dashboard import hooks as dashboard_hooks
 from miles.ray.specs.train import compute_trainer_pool_id
@@ -86,6 +87,8 @@ def _setup_disk_offload_reclaim(disk_dir: str) -> None:
 
 
 class MegatronTrainRayActor(TrainRayActor):
+    _optimizer_state_placement = None
+
     @with_logs
     @with_defer(lambda: Timer().start("train_wait"))
     def init(
@@ -193,6 +196,8 @@ class MegatronTrainRayActor(TrainRayActor):
         heal_load_overrides: dict[str, object] = (
             dict(no_load_optim=False, no_load_rng=False, finetune=False) if recv_ckpt_src_rank is not None else {}
         )
+        if (numa_mode := getattr(args, "optimizer_state_numa", None)) is not None:
+            self._optimizer_state_placement = install_optimizer_state_numa(numa_mode)
         with inplace_modify_args(args, heal_load_overrides):
             self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id = initialize_model_and_optimizer(
                 args, role, checkpointing_context=checkpointing_context
@@ -477,6 +482,8 @@ class MegatronTrainRayActor(TrainRayActor):
                     attempt=attempt,
                 )
 
+            if self._optimizer_state_placement is not None:
+                self._optimizer_state_placement.report()
             return result
 
     @with_logs
